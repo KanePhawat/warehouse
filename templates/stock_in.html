@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>รับเข้าสินค้า - {{ product.name }}</title>
+    <style>
+      .manage-cell {
+        position: relative;
+      }
+      .delete-icon {
+        visibility: hidden;
+        color: red;
+        cursor: pointer;
+      }
+      .manage-cell:hover .delete-icon {
+        visibility: visible;
+      }
+      .modal {
+        display: none;
+        position: fixed;
+        top: 30%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: #fff;
+        padding: 1rem;
+        border: 1px solid #aaa;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+      }
+      .modal.show {
+        display: block;
+      }
+      .manage-cell {
+        position: relative;
+      }
+      .edit-icon {
+        visibility: visible; /* 🛠️ แสดงตลอด */
+        cursor: pointer;
+        color: #555;
+        margin-right: 5px;
+      }
+      .delete-icon {
+        visibility: hidden; /* 🗑️ ซ่อนก่อน */
+        color: red;
+        cursor: pointer;
+      }
+      .manage-cell:hover .delete-icon {
+        visibility: visible; /* 🗑️ แสดงตอน hover */
+      }
+      .variant-row {
+        margin-bottom: 8px;
+      }
+      .form-section {
+        margin-bottom: 20px;
+      }
+      label {
+        display: block;
+        margin-bottom: 6px;
+      }
+      input[type="number"] {
+        width: 80px;
+        padding: 4px;
+      }
+      textarea {
+        width: 300px;
+      }
+      /* Toggle switch container */
+      .switch {
+        position: relative;
+        display: inline-block;
+        width: 50px;
+        height: 24px;
+        margin-right: 10px;
+      }
+      /* Hide default checkbox */
+      .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+      
+      /* Slider */
+      .slider {
+        position: absolute;
+        cursor: pointer;
+        background-color: #ccc;
+        border-radius: 34px;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        transition: 0.4s;
+      }
+      
+      /* Circle inside */
+      .slider::before {
+        content: "";
+        position: absolute;
+        height: 18px;
+        width: 18px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        border-radius: 50%;
+        transition: 0.4s;
+      }
+      
+      /* Checked */
+      .switch input:checked + .slider {
+        background-color: #4caf50;
+      }
+      .switch input:checked + .slider::before {
+        transform: translateX(26px);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ส่วนฟอร์มรับเข้าสินค้า -->
+    <h1>รับเข้าสินค้า: {{ product.name }}</h1>
+    <form method="post" enctype="multipart/form-data">
+      <input type="hidden" id="maxSalesVariantRows" value="{{ product.variants | selectattr('is_for_sale') | list | length }}">
+      <label>วันที่รับเข้า (ย้อนหลังได้):</label>
+      <input type="date" name="date_in" value="{{ current_date }}" required />
+      <br />
+      <!-- Check box เลือกรูปแบบจาก size การขาย -->
+      <label class="switch">
+        <input type="checkbox" id="enableSalesVariants" onchange="toggleSalesVariants()">
+        <span class="slider"></span>
+      </label>
+      <strong>
+        เลือกรูปแบบการรับเข้าจากรายการขาย
+      </strong>
+      <div id="sales-variants-section" style="display: none;">
+        <div id="sales-variants-container"></div>
+        <button type="button" id="add-sales-variant-btn" onclick="addSalesVariant()">➕ เพิ่มรูปแบบ</button>
+      </div></br>
+      <!-- Check box กรอกรูปแบบ size การรับเข้าใหม่ -->
+      <label class="switch">
+        <input type="checkbox" id="enableCustomStockin" onchange="toggleCustomStockin()">
+        <span class="slider"></span>
+      </label>
+        <strong>
+          เพิ่มรูปแบบหรือรับเข้าใหม่
+        </strong> (เช่น กล่องใหญ่, แพ็คเฉพาะกิจ):
+      <div id="custom-stockin-section" style="display: none;">
+        <div id="custom-stockin-wrapper">
+          <div class="custom-stockin-entry">
+            <label>ชื่อรูปแบบ:
+              <input list="presetVariants" name="custom_variant_name[]" placeholder="เช่น กล่องใหญ่">
+              <datalist id="presetVariants">
+                <option value="กล่องใหญ่">
+              </datalist>
+            </label>
+            <label>จำนวนชิ้นต่อหน่วย:
+              <input type="number" name="custom_variant_pack_size[]" min="1" placeholder="เช่น 100,500">
+            </label>
+            <label>จำนวนที่รับเข้า:
+              <input type="number" name="custom_variant_qty[]" min="0" value="0">
+            </label>
+          </div>
+        </div>
+      </div>
+      <br />
+      <label
+        >อัปโหลดใบส่งของ/ใบสั่งซื้อ:
+        <input type="file" name="evidence" accept="image/*" /></label
+      ><br />
+      <label>หมายเหตุเพิ่มเติม (ถ้ามี):</label>
+      <textarea
+        name="note"
+        rows="3"
+        cols="40"
+        placeholder="เช่น แถม 2 ชิ้น, สั่งจากซัพพลายเออร์ใหม่..."
+      ></textarea>
+      <br /><br />
+      <button type="submit">💾 บันทึก</button>
+    </form>
+    <br />
+    <a href="{{ url_for('index') }}">← กลับหน้าหลัก</a>
+    <hr />
+    <h2>📋 ประวัติการรับเข้าสินค้า</h2>
+    <table border="1" cellpadding="5" cellspacing="0">
+      <thead>
+        <tr>
+          <th>วันที่รับเข้า</th>
+          <th>จำนวนรับเข้า(รายชิ้น)</th>
+          <th>รายการที่รับเข้า</th>
+          <th>หลักฐาน</th>
+          <th>หมายเหตุเพิ่มเติม</th>
+          <th>การจัดการ</th>
+        </tr>
+      </thead>
+      <tbody> <!-- ตารางแสดงข้อมูลการรับเข้าสินค้า -->
+        {% for record in history %} 
+        <tr>
+          <td> <!-- ช่อง1 วันที่รับเข้า -->
+            {% if record.date_in %}
+              {{ record.date_in.strftime('%d') }} 
+              {{ record.date_in.strftime('%b')
+                  | replace('Jan','ม.ค.') | replace('Feb','ก.พ.') |
+                    replace('Mar','มี.ค.') | replace('Apr','เม.ย.') |
+                    replace('May','พ.ค.') | replace('Jun','มิ.ย.') |
+                    replace('Jul','ก.ค.') | replace('Aug','ส.ค.') |
+                    replace('Sep','ก.ย.') | replace('Oct','ต.ค.') |
+                    replace('Nov','พ.ย.') | replace('Dec','ธ.ค.') 
+              }} 
+              {{ record.date_in.year + 543 }}
+            {% else %}
+            <span style="color:red;">— ไม่มีข้อมูลวันที่ —</span>
+            {% endif %}
+          </td>
+          <td> <!-- ช่อง2 จำนวนสินค้ารับเข้า(รายชิ้น) -->
+            {{ record.total_units }} {{ product.unit }}
+          </td>
+          <td> <!-- ช่อง3 รายการที่รับเข้า -->
+            {% for detail in record.details %}
+              {{ detail.sale_mode }} × {{ detail.quantity }} (รวม {{ detail.total_units }} {{ product.unit }})<br>
+            {% endfor %}
+          </td>
+          <td> <!-- ช่อง4 หลักฐานเช่น PO -->
+            {% if record.evidence_image %}
+            <a
+              href="{{ url_for('static', filename='uploads/' ~ record.evidence_image) }}"
+              target="_blank"
+              >ดูรูป</a
+            >
+            {% else %}<span style="color: red">ไม่ได้แนบรูปภาพ</span>{% endif %}
+          </td>
+          <td>  <!-- ช่อง5 หมายเหตุ -->
+            {{ record.note or '' }}
+          </td>
+          <td class="manage-cell"> <!-- ช่อง6 การจัดการ -->
+            <span
+              class="edit-icon"
+              onclick="openEditModal(
+                {{ record.id }},
+                '{{ record.date_in.strftime('%Y-%m-%d') if record.date_in else '' }}',
+                `{{ record.note | default('') | e }}`
+              )"
+              >🛠️</span
+            >
+            <span class="delete-icon" onclick="confirmDelete('{{ record.id }}')">🗑️</span>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" style="text-align: center">ยังไม่มีประวัติ</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <!-- Modal -->
+    <div id="editModal" class="modal">
+      <div>
+        <input type="hidden" id="editRecordId" />
+        <label
+          >วันที่รับเข้า: <input type="date" id="editDate" required /> </label
+        ><br /><br />
+        <label
+          >จำนวน:
+          <div id="variant-edit-section">
+            {% for variant in product.variants %}
+              <label>
+                {{ variant.sale_mode }} ({{ variant.pack_size }} {{ product.unit }}):
+                <input
+                  type="number"
+                  class="edit-variant"
+                  data-variant-id="{{ variant.id }}"
+                  min="0"
+                  value="0"
+                />
+              </label><br>
+            {% endfor %}
+          </div>
+        <br /><br />
+        <label
+          >อัปโหลดใหม่ (ถ้าต้องการ):
+          <input type="file" id="editEvidence" accept="image/*" /> </label
+        ><br /><br />
+        <label>หมายเหตุเพิ่มเติม:</label>
+        <br />
+        <textarea
+          id="editNote"
+          rows="3"
+          cols="40"
+          placeholder="แก้ไขหมายเหตุ (ถ้ามี)"
+        ></textarea>
+        <br /><br />
+        <div id="editError" style="color: red"></div>
+        <button type="button" onclick="submitEdit()">💾 บันทึก</button>
+        <button type="button" onclick="closeEditModal()">❌ ยกเลิก</button>
+      </div>
+    </div>
+    <div id="deleteModal" class="modal">
+      <div>
+        <input type="hidden" id="recordIdInput" />
+        <label>
+          กรอกรหัสผ่านเพื่อยืนยันการลบ:
+          <input type="password" id="passwordInput" required />
+        </label>
+        <br /><br />
+        <div id="errorText" style="color: red"></div>
+        <br />
+        <button type="button" onclick="submitDelete()">✅ ยืนยัน</button>
+        <button type="button" onclick="closeModal()">❌ ยกเลิก</button>
+      </div>
+    </div>
+    <script>
+
+      function openEditModal(id, date, note) {
+        document.getElementById("editRecordId").value = id;
+        document.getElementById("editDate").value = date;
+        document.getElementById("editNote").value = note || "";
+        document.getElementById("editEvidence").value = "";
+        document.getElementById("editError").innerText = "";
+    
+        // 🔄 ดึงข้อมูล quantity แต่ละ variant จาก backend
+        fetch(`/stock_in/get_variant_qty/${id}`)
+          .then((res) => res.json())
+          .then((data) => {
+            const variants = document.querySelectorAll(".edit-variant");
+            variants.forEach((input) => {
+              const variantId = input.dataset.variantId;
+              input.value = data.quantities[variantId] || 0;
+            });
+          });
+    
+        document.getElementById("editModal").classList.add("show");
+      }
+      function closeEditModal() {
+        document.getElementById("editModal").classList.remove("show");
+        document.getElementById("editError").innerText = ""; // เคลียร์ข้อความผิดพลาด
+      }
+      function confirmDelete(id) {
+        id = parseInt(id); // กันไว้ก่อน
+        document.getElementById("recordIdInput").value = id;
+        document.getElementById("passwordInput").value = "";
+        document.getElementById("errorText").innerText = "";
+        document.getElementById("deleteModal").classList.add("show");
+      }
+      function closeModal() {
+        document.getElementById("editModal").classList.remove("show");
+        document.getElementById("deleteModal").classList.remove("show");
+      }
+      async function submitEdit() {
+        const recordId = document.getElementById("editRecordId").value;
+        const date = document.getElementById("editDate").value;
+        const note = document.getElementById("editNote").value;
+        const file = document.getElementById("editEvidence").files[0];
+    
+        const formData = new FormData();
+        formData.append("date_in", date);
+        formData.append("note", note);
+        if (file) formData.append("evidence", file);
+    
+        // 🔁 ส่งค่าทุก variant
+        const variants = document.querySelectorAll(".edit-variant");
+        variants.forEach((input) => {
+          const variantId = input.dataset.variantId;
+          formData.append(`variant_${variantId}`, input.value);
+        });
+    
+        const response = await fetch(`/stock_in/edit/${recordId}`, {
+          method: "POST",
+          body: formData,
+        });
+    
+        const result = await response.json();
+        if (result.success) {
+          location.reload();
+        } else {
+          document.getElementById("editError").innerText =
+            result.message || "❌ เกิดข้อผิดพลาด";
+        }
+      }
+      async function submitDelete() {
+        const recordId = document.getElementById("recordIdInput").value;
+        const password = document.getElementById("passwordInput").value;
+      
+        const response = await fetch("/stock_in/delete/" + recordId, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ password: password }),  // ไม่ต้องส่ง record_id ซ้ำ
+        });
+      
+        const result = await response.json();
+      
+        if (result.success) {
+          location.reload();
+        } else {
+          document.getElementById("errorText").innerText =
+            result.message || "❌ รหัสผ่านไม่ถูกต้อง";
+        }
+      }
+  //script สำหรับการเพิ่ม รูปแบบการรับเข้า อ้างอิง size จากฝั่งการขาย
+  const allVariants = {{ variants_json | tojson }};
+  let selectedVariantIds = new Set();
+
+  function toggleSalesVariants() {
+    const isChecked = document.getElementById("enableSalesVariants").checked;
+    document.getElementById("sales-variants-section").style.display = isChecked ? "block" : "none";
+    if (isChecked && document.getElementById("sales-variants-container").children.length === 0) {
+      addSalesVariant();
+    }
+  }
+
+  function toggleCustomStockin() {
+    const checked = document.getElementById("enableCustomStockin").checked;
+    document.getElementById("custom-stockin-section").style.display = checked ? "block" : "none";
+  }
+
+  function addSalesVariant() {
+    const availableVariants = allVariants.filter(v => !selectedVariantIds.has(v.id));
+    if (availableVariants.length === 0) {
+      document.getElementById("add-sales-variant-btn").disabled = true;
+      return;
+    }
+  
+    const container = document.getElementById("sales-variants-container");
+    const row = document.createElement("div");
+    row.classList.add("sales-variant-row");
+  
+    const select = document.createElement("select");
+    select.required = true;
+    let previousValue = null;
+  
+    availableVariants.forEach((v, i) => {
+      const opt = document.createElement("option");
+      opt.value = v.id;
+      opt.textContent = `${v.sale_mode} (${v.pack_size})`;
+      select.appendChild(opt);
+  
+      if (i === 0) {
+        previousValue = v.id;
+      }
+    });
+  
+    select.value = previousValue;
+    selectedVariantIds.add(previousValue);
+  
+    const quantity = document.createElement("input");
+    quantity.type = "number";
+    quantity.min = "1";
+    quantity.placeholder = "จำนวน";
+    quantity.required = true;
+  
+    select.name = "variant_id[]";
+    quantity.name = "variant_qty[]";
+  
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.textContent = "❌";
+    removeBtn.onclick = function () {
+      selectedVariantIds.delete(parseInt(select.value));
+      row.remove();
+      document.getElementById("add-sales-variant-btn").disabled = false;
+    };
+  
+    select.onchange = function () {
+      selectedVariantIds.delete(previousValue);
+      const newValue = parseInt(this.value);
+      selectedVariantIds.add(newValue);
+      previousValue = newValue;
+  
+      document.getElementById("add-sales-variant-btn").disabled = selectedVariantIds.size >= allVariants.length;
+    };
+  
+    row.appendChild(select);
+    row.appendChild(quantity);
+    row.appendChild(removeBtn);
+    container.appendChild(row);
+  
+    if (selectedVariantIds.size >= allVariants.length) {
+      document.getElementById("add-sales-variant-btn").disabled = true;
+    }
+  }
+    </script>
+  </body>
+</html>

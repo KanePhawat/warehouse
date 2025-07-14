@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>ขายสินค้า</title>
+    <style>
+      .modal {
+        display: none;
+        position: fixed;
+        top: 45%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: #fff;
+        padding: 1rem;
+        border-radius: 10px;
+        width: 400px;
+        border: 1px solid #aaa;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+        z-index: 1;
+        font-family: sans-serif;
+      }
+      .modal.show {
+        display: block;
+      }
+      .manage-cell {
+        position: relative;
+      }
+      .modal-content {
+        background-color: #fefefe;
+        margin: auto;
+        padding: 20px;
+        border: 1px solid #888;
+        width: 400px;
+      }
+      .delete-icon {
+        visibility: hidden;
+        color: red;
+        cursor: pointer;
+      }
+      .manage-cell:hover .delete-icon {
+        visibility: visible;
+      }
+      .edit-icon {
+        visibility: visible; /* 🛠️ แสดงตลอด */
+        cursor: pointer;
+        color: #555;
+        margin-right: 5px;
+      }
+      .report-icon {
+        cursor: pointer;
+        color: #007bff;
+        margin-right: 5px;
+        visibility: visible;
+      } 
+        #editCustomerTotal, 
+        #editTransactionFee, 
+        #editSellerReceive {
+          display: none !important;
+        }
+    </style>
+  </head>
+  <body>
+    <h1>ขายสินค้า: {{ product.name }}</h1>
+
+    <form method="post">
+      <label>วันที่ขาย (ย้อนหลังได้):</label>
+      <input
+        type="date"
+        name="date_sold"
+        value="{{ current_date }}"
+        required
+      /><br /><br />
+      <label>ชื่อลูกค้า:</label>
+      <input type="text" name="customer_name" required />
+      <br /><br />
+      <label>ช่องทางการขาย:</label>
+      <select name="channel" id="channel_select" onchange="updateFees()">
+        {% for c in channels %}
+        <option value="{{ c.channel }}">{{ c.channel }}</option>
+        {% endfor %}
+      </select>
+      <a href="{{ url_for('manage_channels') }}">(ตั้งค่าเพิ่มเติม)</a>
+      <br /><br />
+      <!-- จังหวัดที่จัดส่ง -->
+      <label>จังหวัดที่จัดส่ง:</label>
+      <input list="province_list" name="shipping_province" required placeholder="เลือกหรือพิมพ์จังหวัด" />
+      <datalist id="province_list">
+        <option value="กรุงเทพมหานคร">
+        <option value="เชียงใหม่">
+        <option value="ชลบุรี">
+        <option value="ขอนแก่น">
+        <option value="นครราชสีมา">
+        <option value="ภูเก็ต">
+        <option value="สงขลา">
+        <option value="ระยอง">
+        <option value="อุบลราชธานี">
+        <option value="นครปฐม">
+      </datalist>
+      <br /><br />
+
+      <label>จำนวนที่ขาย:</label>
+      <input
+        type="number"
+        name="quantity"
+        min="1"
+        max="{{ product.stock }}"
+        required
+      /><label> {{ product.unit }}</label><br /><br />
+      <label>ราคาต่อ{{ product.unit }}:</label>
+      <input type="number" step="0.01" name="price" required />
+      <label>บาท</label>
+      <br /><br />
+      <label>💰 ราคาขายสุทธิ:</label>
+      <input type="text" id="totalPrice" readonly style="background: #f0f0f0" />
+      <label>บาท</label>
+      <br /><br />
+      <!-- ค่าจัดส่ง -->
+      <label>ค่าจัดส่ง (ผู้ซื้อชำระ):</label>
+      <input type="number" name="shipping_fee" step="0.01" value="0.00" />
+      <label>บาท</label>
+      <br /><br />
+      <label>ส่วนลด<span id="platformLabel">Shopee</span>:</label>
+      <input type="number" name="platform_discount" step="0.01" value="0.00" />
+      <label>บาท</label>
+      <br /><br />
+      <label>ส่วนลดร้านค้า:</label>
+      <input type="number" name="shop_discount" step="0.01"value="0.00"  />
+      <label>บาท</label>
+      <br /><br />
+      <!-- ส่วนลด Coin -->
+      <label>ส่วนลด Coin:</label>
+      <input type="number" name="coin_discount" step="0.01" value="0.00" />
+      <label>บาท</label>
+      <br /><br />
+      <button type="submit">💾 บันทึก</button>
+    </form>
+    <br />
+    <a href="{{ url_for('index') }}">← กลับหน้าหลัก</a>
+    <hr />
+    <h2>📋 ประวัติการขายสินค้า</h2>
+    <form method="get">
+      <label>ช่วงวันที่ขาย:</label>
+      <input type="date" name="start_date" value="{{ request.args.get('start_date', '') }}">
+      -
+      <input type="date" name="end_date" value="{{ request.args.get('end_date', '') }}">
+    
+      <label>ช่องทาง:</label>
+      <select name="channel">
+        <option value="">-- ทุกช่องทาง --</option>
+        {% for ch in channels %}
+          <option value="{{ ch.channel }}" {% if request.args.get('channel') == ch.channel %}selected{% endif %}>{{ ch.channel }}</option>
+        {% endfor %}
+      </select>
+    
+      <button type="submit">🔍 ค้นหา</button>
+      <a href="{{ url_for('sell_product', product_id=product.id) }}">รีเซต</a>
+    </form>
+    <br />
+    <table border="1" cellpadding="5" cellspacing="0">
+      <thead>
+        <tr>
+          <th onclick="sortTable(0, this)">วันที่ขาย</th>
+          <th onclick="sortTable(1, this)">ชื่อลูกค้า</th>
+          <th onclick="sortTable(2, this)">ช่องทาง</th>
+          <th onclick="sortTable(3, this)">จำนวน</th>
+          <th>หน่วย</th>
+          <!--<th onclick="sortTable(5, this)">ราคาขายต่อ{{product.unit}}</th>-->
+          <th onclick="sortTable(6, this)">ราคาขายสุทธิ</th>
+          <th onclick="sortTable(7, this)">ส่วนลดร้าน</th>
+          <th onclick="sortTable(8, this)">ส่วนลด Platform</th>
+          <th onclick="sortTable(9, this)">ส่วนลด Coin</th>
+          <!--<th>ค่าคอมมิชชั่น</th>-->
+          <!--<th>ค่าธุรกรรม</th>-->
+          <th>ยอดลูกค้าชำระ</th>
+          <th>ยอดรับจริง</th>
+          <!--<th>VAT</th>-->
+          <th>จัดการ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sale in sales_history %}
+        <tr>
+          <td>{{ sale.date_sold.strftime('%d/%m/%Y') }}</td>
+          <td>{{ sale.customer_name }}</td>
+          <td>{{ sale.channel}}</td>
+          <td>{{ sale.quantity }}</td>
+          <td>{{ product.unit or '-' }}</td>
+          <!--<td>{{ '%.2f'|format(sale.sale_price) }}</td>-->
+          {% set subtotal = (sale.quantity or 0) * (sale.sale_price or 0) %}
+          <td>{{ '%.2f'|format(subtotal) }}</td>
+          <td>{{ '%.2f'|format(sale.shop_discount or 0) }}</td>
+          <td>{{ '%.2f'|format(sale.platform_discount or 0) }}</td>
+          <td>{{ '%.2f'|format(sale.coin_discount or 0) }}</td>
+          <!--<td>
+            {{ "%.2f"|format(((sale.quantity * sale.sale_price * (sale.commission_percent or 0) / 100) | int)) }}
+          </td>-->
+          <!--<td>{{ '%.2f' | format(sale.transaction_fee) }}</td>-->
+          <td>{{ '%.2f' | format(sale.customer_total) }}</td>
+          <td>{{ '%.2f' | format(sale.seller_receive) }}</td>
+          <!--<td>{{ '%.2f' | format(sale.vat_amount) }}</td>-->
+          <td class="manage-cell">
+            <span
+            class="edit-icon"
+            onclick="openEditModal(
+              {{ sale.id }},
+              '{{ sale.date_sold.strftime('%Y-%m-%d') }}',
+              '{{ sale.customer_name|replace("'", "\\'") }}',
+              {{ sale.quantity }},
+              {{ sale.sale_price }},
+              '{{ sale.channel|replace("'", "\\'") }}',
+              {{ sale.shop_discount or 0 }},
+              {{ sale.platform_discount or 0 }},
+              '{{ sale.shipping_province or '' }}',
+              {{ sale.coin_discount or 0 }},
+              {{ sale.shipping_fee or 0 }}
+            )"
+          >🛠️</span>
+            <a
+            href="/sale/report/{{ sale.id }}"
+            target="_blank"
+            title="ดูรายงานแบบละเอียด"
+            class="report-link"
+            >📊</a>
+            <span class="delete-icon" onclick="confirmDelete({{ sale.id }})"
+              >🗑️</span
+            >
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="12" style="text-align: center">ยังไม่มีประวัติการขาย</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Modal แก้ไข -->
+    <div id="editModal" class="modal">
+      <div>
+        <input type="hidden" id="editSaleId" />
+        <label>วันที่ขาย:</label>
+        <input type="date" id="editDateSold" required /><br /><br />
+        <label>ชื่อลูกค้า:</label>
+        <input type="text" id="editCustomer" required /><br /><br />
+        <label>ช่องทางการขาย:</label>
+        <select id="editChannel" required>
+          {% for ch in channels %}
+          <option value="{{ ch.channel }}">{{ ch.channel }}</option>
+          {% endfor %}</select
+        ><br /><br />
+        <!-- จังหวัดที่จัดส่ง -->
+        <label>จังหวัดที่จัดส่ง:</label>
+        <input list="province_list" id="editProvince" required placeholder="เลือกหรือพิมพ์จังหวัด" />
+        <datalist id="province_list">
+          <option value="กรุงเทพมหานคร">
+          <option value="เชียงใหม่">
+          <option value="ชลบุรี">
+          <option value="ขอนแก่น">
+          <option value="นครราชสีมา">
+          <option value="ภูเก็ต">
+          <option value="สงขลา">
+          <option value="ระยอง">
+          <option value="อุบลราชธานี">
+          <option value="นครปฐม">
+        </datalist>
+        <br /><br />
+        <label>จำนวนที่ขาย:</label>
+        <input type="number" id="editQuantity" min="1" required />
+        <label>{{ product.unit }}</label>
+        <br /><br />
+        <label>ราคาต่อ{{product.unit}}:</label>
+        <input type="number" step="0.01" id="editPrice" required />
+        <label>บาท</label>
+        <br /><br />
+        <!-- ค่าจัดส่ง (ผู้ซื้อชำระ) -->
+        <label>ค่าจัดส่ง:</label>
+        <input type="number" step="0.01" id="editShippingFee" value="0.00" />
+        <label>บาท</label>
+        <br /><br />
+        <label>ส่วนลด Platform:</label>
+        <input type="number" id="editPlatformDiscount" step="0.01" />
+        <label>บาท</label>
+        <br /><br />
+        <label>ส่วนลดร้านค้า:</label>
+        <input type="number" id="editShopDiscount" step="0.01" />
+        <label>บาท</label>
+        <br /><br />
+        <!-- ส่วนลด Coin -->
+        <label>ส่วนลด Coin:</label>
+        <input type="number" step="0.01" id="editCoinDiscount" value="0.00" />
+        <label>บาท</label>
+        <br /><br />
+        <div id="editError" style="color: red"></div>
+        <button type="button" onclick="submitEdit()">💾 บันทึก</button>
+        <button type="button" onclick="closeEditModal()">❌ ยกเลิก</button>
+      </div>
+    </div>
+    <div id="deleteModal" class="modal">
+      <div>
+        <input type="hidden" id="recordIdInput" />
+        <label>
+          กรอกรหัสผ่านเพื่อยืนยันการลบ:
+          <input type="password" id="passwordInput" required />
+        </label>
+        <br /><br />
+        <div id="errorText" style="color: red"></div>
+        <br />
+        <button type="button" onclick="submitDelete()">✅ ยืนยัน</button>
+        <button type="button" onclick="closeModal()">❌ ยกเลิก</button>
+      </div>
+    </div>
+    <div id="reportModal" class="modal">
+      <div>
+        <h3>📊 รายงานยอดขาย (แบบละเอียด)</h3>
+        <div id="reportContent">
+          <!-- รายละเอียดจะถูกใส่ด้วย JS -->
+        </div>
+        <br />
+        <button type="button" onclick="closeReportModal()">❌ ปิด</button>
+      </div>
+    </div>
+    <script>
+      function openEditModal(
+        id,
+        dateSold,
+        customerName,
+        quantity,
+        price,
+        channel,
+        shopDiscount = 0,
+        platformDiscount = 0,
+        shipping_province = '',
+        coinDiscount = 0,
+        shippingFee = 0
+      ) {
+        const dateObj = new Date(dateSold);
+        const formattedDate = dateObj.toISOString().split("T")[0];
+
+        document.getElementById("editSaleId").value = id;
+        document.getElementById("editDateSold").value = formattedDate;
+        document.getElementById("editCustomer").value = customerName;
+        document.getElementById("editQuantity").value = quantity;
+        document.getElementById("editPrice").value = price;
+        document.getElementById("editChannel").value = channel;
+        document.getElementById("editShopDiscount").value = shopDiscount;
+        document.getElementById("editPlatformDiscount").value = platformDiscount;
+        document.getElementById("editProvince").value = shipping_province;
+        document.getElementById("editCoinDiscount").value = coinDiscount;
+        document.getElementById("editShippingFee").value = shippingFee;
+        document.getElementById("editModal").classList.add("show");
+        calculateEditSummary();
+      }
+      function closeModal() {
+        document.getElementById("editModal").classList.remove("show");
+        document.getElementById("deleteModal").classList.remove("show");
+      }
+      function closeEditModal() {
+        document.getElementById("editModal").classList.remove("show");
+        document.getElementById("deleteModal").classList.remove("show");
+      }
+      function confirmDelete(id) {
+        document.getElementById("recordIdInput").value = id;
+        document.getElementById("passwordInput").value = "";
+        document.getElementById("errorText").innerText = "";
+        document.getElementById("deleteModal").classList.add("show");
+      }
+      function calculateEditSummary() {
+        const qty = parseFloat(document.getElementById("editQuantity").value) || 0;
+        const price = parseFloat(document.getElementById("editPrice").value) || 0;
+        const shipping = parseFloat(document.getElementById("editShippingFee").value) || 0;
+        const shopDiscount = parseFloat(document.getElementById("editShopDiscount").value) || 0;
+        const platformDiscount = parseFloat(document.getElementById("editPlatformDiscount").value) || 0;
+        const coinDiscount = parseFloat(document.getElementById("editCoinDiscount").value) || 0;
+      
+        // 1. ราคาขายสุทธิ
+        const totalPrice = qty * price;
+        // 2. ยอดที่ลูกค้าชำระ
+        const customerTotal = totalPrice - shopDiscount - platformDiscount - coinDiscount + shipping;
+        // 3. ค่าธุรกรรม (ปัดขึ้น)
+        const transactionFee = Math.round((customerTotal + platformDiscount + coinDiscount) * (transactionRate / 100));
+        // 4. ค่าคอมมิชชั่น (ปัดลง)
+        const commissionValue = Math.floor(totalPrice * (commissionRate / 100));
+        // 5. ยอดที่ร้านได้รับ
+        const sellerReceive = totalPrice - commissionValue - transactionFee - shopDiscount;
+        // 6. VAT
+        const vat = ((commissionValue + transactionFee) * 7) / 107;
+      
+        // ส่งค่าไปเก็บใน hidden input (หรือแสดง preview)
+
+        document.getElementById("editCustomerTotal").value = customerTotal.toFixed(2);
+        document.getElementById("editTransactionFee").value = transactionFee.toFixed(2);
+        document.getElementById("editSellerReceive").value = sellerReceive.toFixed(2);
+      }
+      async function submitEdit() {
+        const id = document.getElementById("editSaleId").value;
+        const date_sold = document.getElementById("editDateSold").value;
+        const customer_name = document.getElementById("editCustomer").value;
+        const quantity = document.getElementById("editQuantity").value;
+        const price = document.getElementById("editPrice").value;
+        const channel = document.getElementById("editChannel").value;
+        const shopDiscount = document.getElementById("editShopDiscount").value;
+        const platformDiscount = document.getElementById(
+          "editPlatformDiscount"
+        ).value;
+        const shippingProvince = document.getElementById("editProvince").value;
+        const coinDiscount = document.getElementById("editCoinDiscount").value;
+        const shippingFee = document.getElementById("editShippingFee").value;
+        const qty = parseFloat(quantity) || 0;
+        const prc = parseFloat(price) || 0;
+        const shipping = parseFloat(shippingFee) || 0;
+        const platformDisc = parseFloat(platformDiscount) || 0;
+        const shopDisc = parseFloat(shopDiscount) || 0;
+        const coinDisc = parseFloat(coinDiscount) || 0;
+        const subtotal = qty * prc;
+        const customerTotal = subtotal + shipping - platformDisc - shopDisc - coinDisc;
+        
+        const transactionFee = Math.round((customerTotal + platformDisc + coinDisc) * (transactionRate / 100));
+        const sellerReceive = customerTotal - transactionFee;
+
+        const formData = new FormData();
+        formData.append("date_sold", date_sold);
+        formData.append("customer_name", customer_name);
+        formData.append("quantity", quantity);
+        formData.append("price", price);
+        formData.append("channel", channel);
+        formData.append("shop_discount", shopDiscount);
+        formData.append("platform_discount", platformDiscount);
+        formData.append("shipping_province", shippingProvince);
+        formData.append("coin_discount", coinDiscount);
+        formData.append("shipping_fee", shippingFee);
+        formData.append("customer_total", customerTotal.toFixed(2));
+        formData.append("fee_total", transactionFee.toFixed(2));  // ✅
+        formData.append("seller_receive", sellerReceive.toFixed(2));
+
+        const response = await fetch(`/sale/edit/${id}`, {
+          method: "POST",
+          body: formData,
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          location.reload();
+        } else {
+          document.getElementById("editError").innerText =
+            result.message || "❌ เกิดข้อผิดพลาด";
+        }
+      }
+      async function submitDelete() {
+        const id = document.getElementById("recordIdInput").value;
+        const password = document.getElementById("passwordInput").value;
+
+        const response = await fetch("/sale/delete/" + id, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ password: password }),
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          location.reload();
+        } else {
+          document.getElementById("errorText").innerText =
+            result.message || "❌ รหัสผ่านไม่ถูกต้อง";
+        }
+      }
+      const quantityInput = document.querySelector('input[name="quantity"]');
+      const priceInput = document.querySelector('input[name="price"]');
+      const totalPriceInput = document.getElementById("totalPrice");
+
+      function updateTotal() {
+        const qty = parseFloat(quantityInput.value) || 0;
+        const price = parseFloat(priceInput.value) || 0;
+        totalPriceInput.value = (qty * price).toFixed(2);
+      }
+      quantityInput.addEventListener("input", updateTotal);
+      priceInput.addEventListener("input", updateTotal);
+
+      function updateFees() {
+        const selectedChannel = document.getElementById("channel_select").value;
+        const labelSpan = document.getElementById("platformLabel");
+        if (labelSpan) {
+          labelSpan.innerText = selectedChannel;
+        }
+      }
+
+      function openReportModal(saleId) {
+        fetch(`/sale/report/${saleId}`)
+          .then((response) => response.json())
+          .then((data) => {
+            const content = `
+              <p><strong>ราคาสินค้า:</strong> ${data.price.toFixed(2)} บาท</p>
+              <p><strong>จำนวนที่ขาย:</strong> ${data.quantity} หน่วย</p>
+              <p><strong>รวมยอดขาย (ก่อนส่วนลด):</strong> ${(data.price * data.quantity).toFixed(2)} บาท</p>
+              <p><strong>ส่วนลดร้านค้า:</strong> ${data.shop_discount.toFixed(2)} บาท</p>
+              <p><strong>ส่วนลด Platform:</strong> ${data.platform_discount.toFixed(2)} บาท</p>
+              <p><strong>ส่วนลด Coins:</strong> ${data.coin_discount.toFixed(2)} บาท</p>
+              <p><strong>ค่าจัดส่ง (ผู้ซื้อชำระ):</strong> ${data.shipping_fee.toFixed(2)} บาท</p>
+              <p><strong>ยอดที่ลูกค้าชำระ:</strong> ${data.customer_total.toFixed(2)} บาท</p>
+              <p><strong>ค่าธรรมเนียม Shopee (รวม VAT):</strong> ${data.fee_total.toFixed(2)} บาท</p>
+              <p><strong>ยอดที่ร้านได้รับจริง:</strong> ${data.seller_receive.toFixed(2)} บาท</p>
+            `;
+            document.getElementById("reportContent").innerHTML = content;
+            document.getElementById("reportModal").classList.add("show");
+          });
+      }
+      
+      function closeReportModal() {
+        document.getElementById("reportModal").classList.remove("show");
+      }
+      
+      const commissionRate = {{ commission or 0 }};        // เปอร์เซ็นต์
+      const transactionRate = {{ transaction_fee or 0 }};  // เปอร์เซ็นต์
+      window.onload = updateFees;
+      ["editQuantity", "editPrice", "editShippingFee", "editShopDiscount", "editPlatformDiscount", "editCoinDiscount"]
+      .forEach(id => {
+        document.getElementById(id).addEventListener("input", calculateEditSummary);
+      });
+
+      function sortTable(colIndex, thElement) {
+        const table = document.querySelector("table");
+        const tbody = table.tBodies[0];
+        const rows = Array.from(tbody.querySelectorAll("tr"));
+    
+        // toggle direction
+        const isAsc = table.dataset.sortColumn == colIndex && table.dataset.sortDirection !== "asc";
+        table.dataset.sortColumn = colIndex;
+        table.dataset.sortDirection = isAsc ? "asc" : "desc";
+          
+        // 🔁 ล้างลูกศรเก่าทุก th
+        document.querySelectorAll("th").forEach(th => {
+          th.innerText = th.innerText.replace(/[\u25B2\u25BC]/g, '').trim(); // เอา ▲▼ ออก
+        });
+    
+        // เพิ่มลูกศรที่หัวข้อนี้
+        const arrow = isAsc ? " ▲" : " ▼";
+        thElement.innerHTML = thElement.textContent.trim() + arrow;
+    
+        // เรียงข้อมูล
+        rows.sort((a, b) => {
+          const aText = a.cells[colIndex].textContent.trim();
+          const bText = b.cells[colIndex].textContent.trim();
+    
+          let aVal = aText, bVal = bText;
+
+          // 🔁 แปลงวันที่ในคอลัมน์ 0
+          if (colIndex === 0) {
+            const parseDate = (d) => {
+              const [day, month, year] = d.split("/");
+              return new Date(`${year}-${month}-${day}`);
+            };
+            aVal = parseDate(aText);
+            bVal = parseDate(bText);
+          } else {
+            // ตัวเลขหรือข้อความ
+            aVal = isNaN(aText) ? aText.toLowerCase() : parseFloat(aText);
+            bVal = isNaN(bText) ? bText.toLowerCase() : parseFloat(bText);
+          }
+    
+          if (aVal < bVal) return isAsc ? -1 : 1;
+          if (aVal > bVal) return isAsc ? 1 : -1;
+          return 0;
+        });
+        
+        // ใส่แถวเรียงแล้วกลับเข้าไปใหม่
+        rows.forEach(row => tbody.appendChild(row));
+      }
+      
+    </script>
+  </body>
+</html>

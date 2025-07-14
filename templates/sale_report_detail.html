@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>รายงานยอดขาย #{{ sale.id }}</title>
+    <style>
+      body {
+        font-family: Tahoma, sans-serif;
+        margin: 20px;
+        font-size: 14px;
+      }
+  
+      h2 {
+        color: #c0392b;
+        font-size: 20px;
+      }
+  
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+      }
+  
+      td {
+        padding: 8px;
+        border-bottom: 1px solid #ddd;
+      }
+  
+      tr.total-row td {
+        font-weight: bold;
+        background-color: #f2f2f2;
+      }
+  
+      .highlight-red {
+        background-color: #fbeaea;
+        color: #c0392b;
+        font-weight: bold;
+      }
+  
+      .highlight-blue {
+        background-color: #bbe1f8  ;
+      }
+  
+      .highlight-yellow {
+        background-color: #f9d19e ;
+      }
+      .right {
+        text-align: right;
+      }
+  
+      .top-header {
+        background-color: #e74c3c;
+        color: white;
+        font-weight: bold;
+        padding: 10px;
+        margin-bottom: 20px;
+        font-size: 15px;
+      }
+  
+      .summary {
+        margin-top: 10px;
+      }
+
+      tr.sum td {
+        border-top: 2px solid black;
+        border-bottom: 3px double black;
+      }
+
+      
+    </style>
+  </head>
+  <body>
+    <h2>📊 รายงานยอดขาย (แบบละเอียด)</h2>
+    <div class="top-header">
+      ค่าธรรมเนียมการชำระเงินและค่าธรรมเนียมการขาย สำหรับทุกช่องทางการชำระเงิน
+    </div>
+    <p class="summary"><strong>ชื่อลูกค้า:</strong> {{ sale.customer_name }}</p>
+    <p class="summary"><strong>ชื่อสินค้า:</strong> {{ product_name }}</p>
+    <p class="summary"><strong>SKU:</strong> {{ product_sku }}</p>
+    <p class="summary"><strong>วันที่ขาย:</strong> {{ sale.date_sold.strftime('%d/%m/%Y') }}</p>
+    <table>
+      <tr>
+        <td>สินค้าราคาปกติ</td>
+        <td class="right">{{ '%.2f'|format(subtotal) }} บาท</td>
+      </tr>
+      <tr>
+        <td>ส่วนลดจากร้านค้า (Seller Voucher)</td>
+        <td class="right">-{{ '%.2f'|format(sale.shop_discount or 0) }} บาท</td>
+      </tr>
+      <tr class= "sum">
+        <td><strong>ราคาขาย</td>
+        <td class="right">
+          {{ '%.2f'|format(subtotal - sale.shop_discount) }} บาท
+        </td>
+      </tr>
+      <tr>
+        <td>ใช้โค้ดส่วนลด (Platform Voucher)</td>
+        <td class="right">
+          -{{ '%.2f'|format(sale.platform_discount or 0) }} บาท
+        </td>
+      </tr>
+      <tr>
+        <td>ใช้ส่วนลด Coin</td>
+        <td class="right">-{{ '%.2f'|format(sale.coin_discount or 0) }} บาท</td>
+      </tr>
+      <tr>
+        <td>ค่าจัดส่งที่ชำระโดยผู้ซื้อ (Buyer Paid Shipping Fee)</td>
+        <td class="right">{{ '%.2f'|format(sale.shipping_fee or 0) }} บาท</td>
+      </tr>
+      <tr class= "sum">
+        <td><strong>รวมยอดเงินที่ผู้ซื้อต้องชำระ</strong></td>
+        <td class="right">
+          <strong>{{ '%.2f'|format(customer_total) }} บาท</strong>
+        </td>
+      </tr>
+      <tr class="highlight-yellow">
+        <td>
+          ค่าธุรกรรมการชำระเงิน {{ transaction_fee_percent }}% (รวม VAT7%)
+        </td>
+        <td class="right">
+          <strong>{{ '%.2f' | format(sale.transaction_fee) }} บาท</strong>
+        </td>
+      </tr>
+      <tr class="highlight-blue">
+        <td>ค่าธรรมเนียมการขาย {{ commission_percent }}% (รวม VAT7%)</td>
+        <td class="right">
+          <strong> {{ "%.2f"|format(((sale.quantity * sale.sale_price * (sale.commission_percent or 0) / 100) | int)) }} บาท</strong>
+        </td>
+      </tr>
+      <tr class= "sum">
+        <td><strong>รวมยอดเงินที่ผู้ขายได้รับ</strong></td>
+        <td class="right">
+          <strong>{{ '%.2f'|format(sale.seller_receive) }} บาท</strong>
+        </td>
+      </tr>
+    </table>
+    <br />
+    <a href="#" onclick="window.close()">❌ ปิดหน้าต่าง</a>
+  </body>
+</html>

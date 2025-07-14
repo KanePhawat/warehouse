@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>เพิ่มสินค้าใหม่</title>
+    <script>
+      function removeRow(button) {
+        const row = button.parentNode;
+        row.remove();
+      }
+
+      function prepareVariantData() {
+        const rows = document.querySelectorAll(".variant-row");
+        const data = [];
+        rows.forEach((row) => {
+          const pack_size = row.querySelector(".pack_size").value;
+          const selling_price = row.querySelector(".selling_price").value;
+          const sale_mode = row.querySelector(".sale_mode").value;
+          const sku_suffix = row.querySelector(".sku_suffix")?.value || "";
+
+          // ✅ ข้ามรายการที่เป็น "แยกชิ้น"
+          if (!sale_mode || pack_size === "" || selling_price === "") return;
+
+          if (pack_size && selling_price) {
+            data.push({ pack_size, selling_price, sale_mode, sku_suffix });
+          }
+        });
+
+        document.getElementById("variant_data").value = JSON.stringify(data);
+      }
+      function addVariantRow() {
+        const container = document.getElementById("variant-container");
+        const row = document.createElement("div");
+        row.className = "variant-row";
+
+        const isFirstRow = container.children.length === 0;
+
+        row.innerHTML = `
+          <select class="sale_mode"required>
+              <option value="" disabled selected>เลือกรูปแบบ</option>
+              <option value="single">แยกชิ้น</option>
+              <option value="pack">ยกแพ็ค</option>
+              <option value="box">ยกกล่อง</option>
+          </select>
+          <input type="number" placeholder="จำนวนต่อแพ็ค" class="pack_size" min="1" required>
+          <input type="number" placeholder="ราคาขาย" step="0.01" class="selling_price" min="0" required>
+          <input type="text" placeholder="SKU ต่อท้าย (เช่น -P, -B)" class="sku_suffix" />
+          ${
+            isFirstRow
+              ? ""
+              : '<button type="button" onclick="removeRow(this)">🗑️</button>'
+          }
+        `;
+        container.appendChild(row);
+
+        // ✅ เพิ่ม logic: ถ้าเลือก "แยกชิ้น" → จำนวน/แพ็ค = 1 และ disabled
+        const saleModeSelect = row.querySelector(".sale_mode");
+        const packSizeInput = row.querySelector(".pack_size");
+
+        saleModeSelect.addEventListener("change", () => {
+          if (saleModeSelect.value === "single") {
+            packSizeInput.value = 1;
+            packSizeInput.disabled = true;
+          } else {
+            packSizeInput.disabled = false;
+            packSizeInput.value = ""; // ให้ผู้ใช้กรอกเอง
+          }
+        });
+      }
+      window.addEventListener("DOMContentLoaded", () => {
+        addVariantRow(); // เพิ่มแถวแรกตอนโหลด
+      });
+
+      function removeRow(button) {
+        const container = document.getElementById("variant-container");
+        if (container.children.length <= 1) {
+          alert("ต้องมีรูปแบบการขายอย่างน้อย 1 รายการ");
+          return;
+        }
+        const row = button.parentNode;
+        row.remove();
+      }
+    </script>
+    <style>
+      .variant-row {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>เพิ่มสินค้าใหม่</h1>
+    <!-- ✅ ฟอร์มเพิ่มสินค้าทีละชิ้น -->
+    <form
+      method="post"
+      enctype="multipart/form-data"
+      onsubmit="prepareVariantData()"
+    >
+      <label>ชื่อสินค้า: <input type="text" name="name" required /></label
+      ><br /><br />
+      <label>SKU: <input type="text" name="sku" required /></label><br /><br />
+      <label>หมวดหมู่: <input type="text" name="category" /></label><br /><br />
+      <label>หน่วยนับ:</label>
+      <input
+        type="text"
+        name="unit"
+        placeholder="เช่น ชิ้น, กล่อง, ใบ, แพ็ค"
+      /><br /><br />
+      <label
+        >ราคาต้นทุน:
+        <input type="number" step="0.01" name="cost_price" required /></label
+      ><br />
+
+      <!-- ✅ เพิ่มปุ่มสำหรับเพิ่ม Variant -->
+      <p>เลือกรูปแบบการขาย (เช่น แยกชิ้น, ยกแพ็ค, ยกลัง):</p>
+      <div id="variant-container"></div>
+      <p style="font-size: 0.9em; color: #666">
+        เช่น: 12 ชิ้น/แพ็ค ราคา 100 บาท ขายแบบ "ยกแพ็ค"
+      </p>
+      <button type="button" onclick="addVariantRow()">
+        ➕ เพิ่มรูปแบบการขาย
+      </button>
+      <input type="hidden" id="variant_data" name="variant_data" />
+      <br /><br />
+
+      <label>เลือกรูปสินค้า:</label>
+      <input type="file" name="image" accept="image/*" /><br /><br />
+      <button type="submit">เพิ่มสินค้า</button>
+      <br /><br />
+    </form>
+    <hr />
+    <!-- 📥 ฟอร์ม import CSV -->
+    <h2>หรือ Import CSV</h2>
+    <form
+      method="POST"
+      enctype="multipart/form-data"
+      action="{{ url_for('add_product') }}"
+    >
+      <input type="hidden" name="mode" value="csv" />
+      <input type="file" name="csv_file" accept=".csv" required />
+      <button type="submit">Import CSV</button>
+    </form>
+    <br />
+    <a href="{{ url_for('index') }}">กลับหน้ารายการสินค้า</a>
+  </body>
+
+  <!-- ⚡ แสดงข้อความ -->
+  {% with messages = get_flashed_messages(with_categories=true) %} {% if
+  messages %}
+  <ul>
+    {% for category, message in messages %}
+    <li
+      style="color: {% if category == 'error' %}red{% else %}green{% endif %};"
+    >
+      {{ message }}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %} {% endwith %}
+</html>

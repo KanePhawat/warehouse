@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>ตั้งค่าช่องทางการขาย</title>
+    <style>
+      .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+      }
+      .modal.show {
+        display: block;
+      }
+      .modal-content {
+        background: white;
+        padding: 20px;
+        margin: 100px auto;
+        width: 300px;
+        border-radius: 8px;
+      }
+      .manage-cell {
+        position: relative;
+      }
+      .delete-icon {
+        visibility: hidden;
+        cursor: pointer;
+        color: red;
+      }
+      .channel-row:hover .delete-icon {
+        visibility: visible;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>🛠️ ตั้งค่าช่องทางการขาย</h2>
+
+    <form
+      id="channelForm"
+      onsubmit="event.preventDefault(); confirmSaveChannel()"
+    >
+      <label>ชื่อช่องทาง:</label>
+      <input list="existing_channels" name="channel" id="channel" required />
+      <datalist id="existing_channels">
+        {% for ch in channels %}
+        <option value="{{ ch.channel }}"></option>
+        {% endfor %}
+      </datalist>
+      <br /><br />
+
+      <label>ค่าธรรมเนียมการขาย(%) :</label>
+      <input
+        type="number"
+        name="commission_percent"
+        id="commission_percent"
+        step="0.01"
+        required
+      />
+      <label>(รวม VAT 7%)</label>
+      <br /><br />
+
+      <label>ค่าธุรกรรมการชำระเงิน(%) :</label>
+      <input
+        type="number"
+        name="transaction_fee"
+        id="transaction_fee"
+        step="0.01"
+        required
+      />
+      <label>(รวม VAT 7%)</label>
+      <br /><br />
+
+      <button type="button" onclick="confirmSaveChannel()">💾 บันทึก</button>
+    </form>
+
+    <a href="javascript:history.back()">← กลับหน้าการขาย</a>
+    <hr />
+
+    <h3>📋 รายการช่องทางที่ตั้งค่าไว้</h3>
+    <table border="1" cellpadding="5" cellspacing="0">
+      <tr>
+        <th>ชื่อช่องทาง</th>
+        <th>ค่าธรรมเนียมการขาย(%)</th>
+        <th>ค่าธุรกรรมการชำระเงิน(%)</th>
+        <th>จัดการ</th>
+      </tr>
+      {% for ch in channels %}
+      <tr class="channel-row">
+        <td>{{ ch.channel }}</td>
+        <td>{{ '%.2f'|format(ch.commission_percent) }}</td>
+        <td>{{ '%.2f'|format(ch.transaction_fee) }}</td>
+        <td class="manage-cell">
+          <span
+            class="delete-icon"
+            onclick="confirmDeleteChannel('{{ ch.channel }}')"
+            >🗑️</span
+          >
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    <!-- Modal -->
+    <div id="channelSaveModal" class="modal">
+      <div class="modal-content">
+        <label>
+          กรอกรหัสผ่านเพื่อยืนยันการบันทึก:
+          <input type="password" id="channelPasswordInput" required />
+        </label>
+        <br /><br />
+        <div id="channelErrorText" style="color: red"></div>
+        <br />
+        <button type="button" onclick="submitChannelSave()">✅ ยืนยัน</button>
+        <button type="button" onclick="closeChannelModal()">❌ ยกเลิก</button>
+      </div>
+    </div>
+    <div id="channelDeleteModal" class="modal">
+      <div class="modal-content">
+        <input type="hidden" id="channelToDelete" />
+        <label>
+          กรอกรหัสผ่านเพื่อยืนยันการลบ:
+          <input type="password" id="deletePasswordInput" required />
+        </label>
+        <br /><br />
+        <div id="deleteErrorText" style="color: red"></div>
+        <br />
+        <button type="button" onclick="submitDeleteChannel()">
+          ✅ ยืนยันลบ
+        </button>
+        <button type="button" onclick="closeDeleteModal()">❌ ยกเลิก</button>
+      </div>
+    </div>
+
+    <script>
+      function confirmSaveChannel() {
+        document.getElementById("channelPasswordInput").value = "";
+        document.getElementById("channelErrorText").innerText = "";
+        document.getElementById("channelSaveModal").classList.add("show");
+      }
+
+      function closeChannelModal() {
+        document.getElementById("channelSaveModal").classList.remove("show");
+      }
+
+      async function submitChannelSave() {
+        const password = document.getElementById("channelPasswordInput").value;
+        const form = document.getElementById("channelForm");
+
+        const formData = new FormData(form);
+        formData.append("password", password);
+
+        const response = await fetch("/manage_channels", {
+          method: "POST",
+          body: formData,
+          headers: {
+            "X-Requested-With": "XMLHttpRequest",
+          },
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          location.reload();
+        } else {
+          document.getElementById("channelErrorText").innerText =
+            result.message || "❌ เกิดข้อผิดพลาด";
+        }
+      }
+      function confirmDeleteChannel(channelName) {
+        document.getElementById("channelToDelete").value = channelName;
+        document.getElementById("deletePasswordInput").value = "";
+        document.getElementById("deleteErrorText").innerText = "";
+        document.getElementById("channelDeleteModal").classList.add("show");
+      }
+
+      function closeDeleteModal() {
+        document.getElementById("channelDeleteModal").classList.remove("show");
+      }
+
+      async function submitDeleteChannel() {
+        const channel = document.getElementById("channelToDelete").value;
+        const password = document.getElementById("deletePasswordInput").value;
+
+        const response = await fetch("/delete_channel", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          body: JSON.stringify({ channel: channel, password: password }),
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          location.reload();
+        } else {
+          document.getElementById("deleteErrorText").innerText =
+            result.message || "❌ ไม่สามารถลบได้";
+        }
+      }
+    </script>
+  </body>
+</html>

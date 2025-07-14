@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>รายการสินค้า</title>
+    <style>
+      .modal {
+        display: none;
+        position: fixed;
+        z-index: 1;
+        padding-top: 60px;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgba(0, 0, 0, 0.4);
+      }
+      .modal-content {
+        background-color: #fefefe;
+        margin: auto;
+        padding: 20px;
+        border: 1px solid #888;
+        width: 90%; /* เดิม 400px — ให้ responsive */
+        max-width: 600px; /* กำหนด max */
+        box-sizing: border-box;
+        overflow-x: auto; /* ให้ scroll ถ้าจำเป็น */
+        border-radius: 8px;
+      }
+      .variant-row {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+      .variant-row > * {
+        flex: 1 1 120px; /* ✅ ปรับขนาด input ให้อยู่ในกรอบ */
+        min-width: 100px;
+      }
+      .delete-variant-btn {
+        width: 100%;
+        height: 100%;
+        min-width: 32px;
+        min-height: 32px;
+        font-size: 16px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>📦 คลังสินค้า Lukfook 📦</h1>
+    <a href="{{ url_for('add_product') }}">➕ เพิ่มสินค้าใหม่</a><br /><br />
+    <table border="1" cellpadding="10">
+      <thead>
+        <tr>
+          <th>รูปสินค้า</th>
+          <th>ชื่อสินค้า</th>
+          <th>SKU</th>
+          <th>หมวดหมู่</th>
+          <th>หน่วยนับ</th>
+          <th>รูปแบบการขาย</th>
+          <th>จำนวนการขาย</th>
+          <th>ราคาต้นทุน</th>
+          <th>ราคาขาย</th>
+          <th>จำนวนคงเหลือ</th>
+          <th>จัดการ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for product in products %} {% set total_row = product.variants|length
+        if product.variants else 1 %} {% for variant in
+        product.variants|sort(attribute='pack_size') %}
+        <tr>
+          {% if loop.first %}
+          <td rowspan="{{ total_row }}">
+            {% if product.image_filename %}
+            <img
+              src="{{ url_for('static', filename='uploads/' + product.image_filename) }}"
+              width="80"
+            />
+            {% else %}(ไม่มีรูป){% endif %}
+          </td>
+          <td rowspan="{{ total_row }}">{{ product.name }}</td>
+          {% endif %}
+          <td>
+            {{ product.sku }}{% if variant.sku_suffix %}-{{ variant.sku_suffix
+            }}{% endif %}
+          </td>
+          {% if loop.first %}
+          <td rowspan="{{ total_row }}">{{ product.category or '-' }}</td>
+          <td rowspan="{{ total_row }}">{{ product.unit or '-' }}</td>
+          {% endif %}
+          <td>{{ variant.sale_mode }}</td>
+          <td>{{ variant.pack_size }}</td>
+          <td>
+            {{ '{:,.2f}'.format(product.cost_price * variant.pack_size) }}
+          </td>
+          <td>
+            {{ '{:,.2f}'.format(variant.selling_price) if variant.selling_price
+            is not none else '–' }}
+          </td>
+          {% if loop.first %}
+          <td rowspan="{{ total_row }}">{{ '{:,}'.format(product.stock) }}</td>
+          {% endif %} {% if loop.first %}
+          <!-- prettier-ignore -->
+          <td rowspan="{{ total_row }}">
+            <a
+              href="#"
+              class="edit-btn"
+              data-id="{{ product.id }}"
+              data-name="{{ product.name }}"
+              data-sku="{{ product.sku }}"
+              data-cost="{{ product.cost_price }}"
+              data-sell="{{ product.selling_price }}"
+              data-category="{{ product.category or '' }}"
+              data-unit="{{ product.unit or '' }}"
+              data-variants='{{ product.serialized_variants | tojson | safe}}'
+            >
+              🛠️ แก้ไข
+            </a>
+            <a href="#" class="delete-btn" data-id="{{ product.id }}">🗑️ ลบ</a>
+            <a href="{{ url_for('stock_in', product_id=product.id) }}"
+              >📅 รับเข้า</a
+            >
+            |
+            <a href="{{ url_for('sell_product', product_id=product.id) }}"
+              >📤 ขาย</a
+            >
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %} {% if not product.variants %}
+        <tr>
+          <td>{{ product.name }}</td>
+          <td>{{ product.sku }}</td>
+          <td colspan="8" style="text-align: center">ไม่มีรูปแบบการขาย</td>
+        </tr>
+        {% endif %} {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Modal แก้ไขสินค้า -->
+    <div id="editModal" class="modal">
+      <div class="modal-content">
+        <form
+          method="post"
+          enctype="multipart/form-data"
+          id="editForm"
+          onsubmit="updateVariantCount()"
+        >
+          <h3>🛠️ แก้ไขสินค้า</h3>
+          <label
+            >ชื่อสินค้า:<br /><input
+              type="text"
+              name="name"
+              id="edit_name"
+              required /></label
+          ><br /><br />
+          <label
+            >SKU:<br /><input
+              type="text"
+              name="sku"
+              id="edit_sku"
+              required /></label
+          ><br /><br />
+          <label
+            >หมวดหมู่:<br /><input
+              type="text"
+              name="category"
+              id="edit_category" /></label
+          ><br /><br />
+          <label
+            >หน่วยนับ:<br /><input
+              type="text"
+              name="unit"
+              id="edit_unit" /></label
+          ><br /><br />
+          <label
+            >ราคาต้นทุน:<br /><input
+              type="number"
+              name="cost_price"
+              id="edit_cost_price"
+              step="0.01"
+              required /></label
+          ><br />
+
+          <div id="variant_section">
+            <p>รูปแบบการขาย</p>
+            <div id="variant-container"></div>
+            <button type="button" onclick="addVariantRow()">
+              ➕ เพิ่มรูปแบบ
+            </button>
+          </div>
+
+          <input type="hidden" name="variant_count" />
+
+          <label
+            >อัปโหลดรูปใหม่:<br />
+            <input type="file" name="image" accept="image/*" /> </label
+          ><br /><br />
+
+          <button type="submit">💾 บันทึก</button>
+          <button type="button" onclick="closeEditModal()">❌ ยกเลิก</button>
+        </form>
+      </div>
+    </div>
+    <!-- Modal ยืนยันการลบ -->
+    <div id="deleteModal" class="modal">
+      <div class="modal-content">
+        <input type="hidden" id="delete_product_id" />
+        <h3>ยืนยันการลบข้อมูลสินค้า</h3>
+        <p>กรุณาใส่รหัสผ่านเพื่อยืนยันการลบรายการ:</p>
+        <input type="password" id="delete_password" required />
+        <p style="color: red; font-weight: bold">
+          ⚠️ ระวัง: หากกดยืนยันแล้ว
+          ข้อมูลสินค้าจะถูกลบถาวรและไม่สามารถกู้กลับมาได้!
+        </p>
+        <div id="delete_error" style="color: red; font-weight: bold"></div>
+        <button type="button" onclick="submitDelete()">✅ ยืนยัน</button>
+        <button type="button" onclick="closeDeleteModal()">❌ ยกเลิก</button>
+      </div>
+    </div>
+    <script>
+      function openEditModal(button) {
+        const modal = document.getElementById("editModal");
+        const form = document.getElementById("editForm");
+        form.action = "/edit_product/" + button.dataset.id;
+        document.getElementById("edit_name").value = button.dataset.name;
+        document.getElementById("edit_sku").value = button.dataset.sku;
+        document.getElementById("edit_cost_price").value = button.dataset.cost;
+        document.getElementById("edit_category").value =
+          button.dataset.category;
+        document.getElementById("edit_unit").value = button.dataset.unit;
+
+        let variants = JSON.parse(button.dataset.variants || "[]");
+        variants.sort((a, b) => a.pack_size - b.pack_size); // เรียงจากน้อยไปมาก
+
+        const container = document.getElementById("variant-container");
+        container.innerHTML = "";
+
+        if (variants.length === 0) {
+          addVariantRow();
+        } else {
+          variants.forEach((v, i) => {
+            const row = document.createElement("div");
+            row.className = "variant-row";
+            row.innerHTML = `
+              <select name="variant_sale_mode_${i}">
+                <option value="single" ${
+                  v.sale_mode === "single" ? "selected" : ""
+                }>แยกชิ้น</option>
+                <option value="pack" ${
+                  v.sale_mode === "pack" ? "selected" : ""
+                }>ยกแพ็ค</option>
+                <option value="box" ${
+                  v.sale_mode === "box" ? "selected" : ""
+                }>ยกกล่อง</option>
+              </select>
+              <input type="number" name="variant_pack_size_${i}" value="${
+              v.pack_size
+            }" min="1" />
+              <input type="number" name="variant_selling_price_${i}" value="${
+              v.selling_price
+            }" step="0.01" />
+              <input type="text" name="variant_sku_suffix_${i}" value="${
+              v.sku_suffix || ""
+            }" placeholder="SKU ต่อท้าย" />
+              <button type="button" class="delete-variant-btn" onclick="removeVariantRow(this)">🗑️</button>
+            `;
+            container.appendChild(row);
+          });
+        }
+        updateVariantCount();
+        reindexVariantRows();
+        modal.style.display = "block";
+      }
+
+      function closeEditModal() {
+        document.getElementById("editModal").style.display = "none";
+      }
+
+      function addVariantRow() {
+        const container = document.getElementById("variant-container");
+        const row = document.createElement("div");
+        row.className = "variant-row";
+
+        const index = container.children.length;
+
+        row.innerHTML = `
+          <select name="variant_sale_mode_${index}">
+            <option value="single">แยกชิ้น</option>
+            <option value="pack">ยกแพ็ค</option>
+            <option value="box">ยกกล่อง</option>
+          </select>
+          <input type="number" name="variant_pack_size_${index}" value="1" min="1" />
+          <input type="number" name="variant_selling_price_${index}" value="0.00" step="0.01" />
+          <input type="text" name="variant_sku_suffix_${index}" placeholder="SKU ต่อท้าย" />
+          <button type="button" class="delete-variant-btn" onclick="removeVariantRow(this)">🗑️</button>
+        `;
+        container.appendChild(row);
+        updateVariantCount();
+        reindexVariantRows();
+      }
+
+      function updateVariantCount() {
+        const container = document.getElementById("variant-container");
+        const form = document.getElementById("editForm");
+        const countInput = form.querySelector("input[name='variant_count']");
+        countInput.value = container.children.length;
+      }
+
+      document.addEventListener("DOMContentLoaded", function () {
+        document.querySelectorAll(".edit-btn").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            e.preventDefault();
+            openEditModal(btn);
+          });
+        });
+
+        document.querySelectorAll(".delete-btn").forEach((btn) => {
+          btn.addEventListener("click", (e) => {
+            e.preventDefault();
+            const id = btn.dataset.id;
+            confirmDelete(id);
+          });
+        });
+      });
+
+      function confirmDelete(id) {
+        document.getElementById("delete_product_id").value = id;
+        document.getElementById("delete_password").value = "";
+        document.getElementById("delete_error").innerText = "";
+        document.getElementById("deleteModal").style.display = "block";
+      }
+      function validateDeleteForm() {
+        const password = document.getElementById("delete_password").value;
+        if (!password) {
+          document.getElementById("delete_error").innerText =
+            "กรุณาใส่รหัสผ่านก่อนลบสินค้า";
+          return false;
+        }
+        return true;
+      }
+
+      function closeDeleteModal() {
+        document.getElementById("deleteModal").style.display = "none";
+      }
+
+      function removeVariantRow(button) {
+        const container = document.getElementById("variant-container");
+        const rows = container.querySelectorAll(".variant-row");
+
+        if (rows.length <= 1) {
+          return; // ไม่แสดง alert และไม่ลบ
+        }
+
+        button.parentElement.remove();
+        updateVariantCount();
+        reindexVariantRows();
+      }
+
+      function reindexVariantRows() {
+        const container = document.getElementById("variant-container");
+        const rows = container.querySelectorAll(".variant-row");
+
+        rows.forEach((row, index) => {
+          const select = row.querySelector("select");
+          const inputs = row.querySelectorAll("input");
+          const deleteBtn = row.querySelector(".delete-variant-btn");
+
+          if (select) select.name = `variant_sale_mode_${index}`;
+          if (inputs.length === 4) {
+            inputs[0].name = `variant_pack_size_${index}`;
+            inputs[1].name = `variant_selling_price_${index}`;
+            inputs[2].name = `variant_stock_${index}`;
+            inputs[3].name = `variant_sku_suffix_${index}`;
+          }
+
+          // ✅ แสดงปุ่มถังขยะเฉพาะเมื่อมี > 1 แถว
+          if (rows.length <= 1) {
+            deleteBtn.style.display = "none";
+          } else {
+            deleteBtn.style.display = "inline-block";
+          }
+        });
+      }
+      async function submitDelete() {
+        const productId = document.getElementById("delete_product_id").value;
+        const password = document.getElementById("delete_password").value;
+
+        const response = await fetch("/delete_product/" + productId, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json", // 💥 สำคัญ
+          },
+          body: JSON.stringify({ password }), // 💥 ต้องส่งเป็น JSON string
+        });
+
+        try {
+          const result = await response.json();
+
+          if (result.success) {
+            location.reload();
+          } else {
+            document.getElementById("delete_error").innerText = result.message;
+          }
+        } catch (error) {
+          document.getElementById("delete_error").innerText =
+            "❌ ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้";
+          console.error("JSON parsing error:", error);
+        }
+      }
+    </script>
+  </body>
+</html>
