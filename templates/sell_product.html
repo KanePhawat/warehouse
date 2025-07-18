@@ -65,9 +65,9 @@
     <form method="post">
       <label>วันที่ขาย (ย้อนหลังได้):</label>
       <input
-        type="date"
+        type="datetime-local"
         name="date_sold"
-        value="{{ current_date }}"
+        value="{{ current_datetime }}"
         required
       /><br /><br />
       <label>ชื่อลูกค้า:</label>
@@ -97,21 +97,20 @@
         <option value="นครปฐม">
       </datalist>
       <br /><br />
-
-      <label>จำนวนที่ขาย:</label>
-      <input
-        type="number"
-        name="quantity"
-        min="1"
-        max="{{ product.stock }}"
-        required
-      /><label> {{ product.unit }}</label><br /><br />
-      <label>ราคาต่อ{{ product.unit }}:</label>
-      <input type="number" step="0.01" name="price" required />
-      <label>บาท</label>
+      <label>ขนาดการขาย:</label>
+      <select name="variant_id" id="newVariantId" onchange="updateNewUnitLabel()" required>
+        {% for variant in product.variants if variant.is_for_sale %}
+          <option value="{{ variant.id }}" data-sale-mode="{{ variant.sale_mode }}">
+            {{ variant.sale_mode }} ({{ variant.pack_size }} {{ product.unit }})
+          </option>
+        {% endfor %}
+      </select>
+      <label>จำนวน:</label>
+      <input type="number" name="quantity" min="1" required>
+      <label id="newUnitLabel">{{ product.unit }}</label>
       <br /><br />
-      <label>💰 ราคาขายสุทธิ:</label>
-      <input type="text" id="totalPrice" readonly style="background: #f0f0f0" />
+      <label>ราคาขายต่อหน่วย:</label>
+      <input type="number" name="price_per_unit" min="0" required>
       <label>บาท</label>
       <br /><br />
       <!-- ค่าจัดส่ง -->
@@ -162,6 +161,7 @@
           <th onclick="sortTable(0, this)">วันที่ขาย</th>
           <th onclick="sortTable(1, this)">ชื่อลูกค้า</th>
           <th onclick="sortTable(2, this)">ช่องทาง</th>
+          <th>ขนาดการขาย</th>
           <th onclick="sortTable(3, this)">จำนวน</th>
           <th>หน่วย</th>
           <!--<th onclick="sortTable(5, this)">ราคาขายต่อ{{product.unit}}</th>-->
@@ -183,8 +183,9 @@
           <td>{{ sale.date_sold.strftime('%d/%m/%Y') }}</td>
           <td>{{ sale.customer_name }}</td>
           <td>{{ sale.channel}}</td>
+          <td>{{ sale.variant.sale_mode }} ({{ sale.variant.pack_size }} {{ product.unit }})</td>
           <td>{{ sale.quantity }}</td>
-          <td>{{ product.unit or '-' }}</td>
+          <td>{{ sale.variant.sale_mode }}</td>
           <!--<td>{{ '%.2f'|format(sale.sale_price) }}</td>-->
           {% set subtotal = (sale.quantity or 0) * (sale.sale_price or 0) %}
           <td>{{ '%.2f'|format(subtotal) }}</td>
@@ -203,7 +204,7 @@
             class="edit-icon"
             onclick="openEditModal(
               {{ sale.id }},
-              '{{ sale.date_sold.strftime('%Y-%m-%d') }}',
+              '{{ sale.date_sold.strftime('%Y-%m-%dT%H:%M') }}',
               '{{ sale.customer_name|replace("'", "\\'") }}',
               {{ sale.quantity }},
               {{ sale.sale_price }},
@@ -212,7 +213,8 @@
               {{ sale.platform_discount or 0 }},
               '{{ sale.shipping_province or '' }}',
               {{ sale.coin_discount or 0 }},
-              {{ sale.shipping_fee or 0 }}
+              {{ sale.shipping_fee or 0 }},
+              {{ sale.variant_id }}
             )"
           >🛠️</span>
             <a
@@ -239,7 +241,7 @@
       <div>
         <input type="hidden" id="editSaleId" />
         <label>วันที่ขาย:</label>
-        <input type="date" id="editDateSold" required /><br /><br />
+        <input type="datetime-local" id="editDateSold" required /><br /><br />
         <label>ชื่อลูกค้า:</label>
         <input type="text" id="editCustomer" required /><br /><br />
         <label>ช่องทางการขาย:</label>
@@ -264,12 +266,23 @@
           <option value="นครปฐม">
         </datalist>
         <br /><br />
-        <label>จำนวนที่ขาย:</label>
+        <label>ขนาดการขาย:</label>
+        <select id="editVariantId" required onchange="updateEditUnitLabel()">
+          {% for variant in product.variants if variant.is_for_sale %}
+          <option value="{{ variant.id }}"
+                  data-sale-mode="{{ variant.sale_mode }}"
+                  data-pack-size="{{ variant.pack_size }}">
+              {{ variant.sale_mode }} ({{ variant.pack_size }} {{ product.unit }})
+            </option>
+          {% endfor %}
+        </select>
+        <br /><br />
+        <label>จำนวน:</label>
         <input type="number" id="editQuantity" min="1" required />
-        <label>{{ product.unit }}</label>
+        <label id="editUnitLabel">{{ product.unit }}</label>
         <br /><br />
         <label>ราคาต่อ{{product.unit}}:</label>
-        <input type="number" step="0.01" id="editPrice" required />
+        <input type="number" step="0.01" id="editPricePerUnit" required />
         <label>บาท</label>
         <br /><br />
         <!-- ค่าจัดส่ง (ผู้ซื้อชำระ) -->
@@ -331,16 +344,16 @@
         platformDiscount = 0,
         shipping_province = '',
         coinDiscount = 0,
-        shippingFee = 0
+        shippingFee = 0,
+        variantId
       ) {
         const dateObj = new Date(dateSold);
-        const formattedDate = dateObj.toISOString().split("T")[0];
-
+        const formattedDateTime = dateObj.toISOString().slice(0, 16); // ได้รูปแบบ YYYY-MM-DDTHH:mm
+        document.getElementById("editDateSold").value = formattedDateTime;
         document.getElementById("editSaleId").value = id;
-        document.getElementById("editDateSold").value = formattedDate;
         document.getElementById("editCustomer").value = customerName;
         document.getElementById("editQuantity").value = quantity;
-        document.getElementById("editPrice").value = price;
+        document.getElementById("editPricePerUnit").value = price;
         document.getElementById("editChannel").value = channel;
         document.getElementById("editShopDiscount").value = shopDiscount;
         document.getElementById("editPlatformDiscount").value = platformDiscount;
@@ -348,6 +361,7 @@
         document.getElementById("editCoinDiscount").value = coinDiscount;
         document.getElementById("editShippingFee").value = shippingFee;
         document.getElementById("editModal").classList.add("show");
+        document.getElementById("editVariantId").value = String(variantId);
         calculateEditSummary();
       }
       function closeModal() {
@@ -366,7 +380,7 @@
       }
       function calculateEditSummary() {
         const qty = parseFloat(document.getElementById("editQuantity").value) || 0;
-        const price = parseFloat(document.getElementById("editPrice").value) || 0;
+        const price = parseFloat(document.getElementById("editPricePerUnit").value) || 0;
         const shipping = parseFloat(document.getElementById("editShippingFee").value) || 0;
         const shopDiscount = parseFloat(document.getElementById("editShopDiscount").value) || 0;
         const platformDiscount = parseFloat(document.getElementById("editPlatformDiscount").value) || 0;
@@ -391,12 +405,15 @@
         document.getElementById("editTransactionFee").value = transactionFee.toFixed(2);
         document.getElementById("editSellerReceive").value = sellerReceive.toFixed(2);
       }
+      const commissionRate = {{ commission or 0 }};        // เปอร์เซ็นต์
+      const transactionRate = {{ transaction_fee or 0 }};  // เปอร์เซ็นต์
+
       async function submitEdit() {
         const id = document.getElementById("editSaleId").value;
         const date_sold = document.getElementById("editDateSold").value;
         const customer_name = document.getElementById("editCustomer").value;
         const quantity = document.getElementById("editQuantity").value;
-        const price = document.getElementById("editPrice").value;
+        const price = document.getElementById("editPricePerUnit").value;
         const channel = document.getElementById("editChannel").value;
         const shopDiscount = document.getElementById("editShopDiscount").value;
         const platformDiscount = document.getElementById(
@@ -416,12 +433,12 @@
         
         const transactionFee = Math.round((customerTotal + platformDisc + coinDisc) * (transactionRate / 100));
         const sellerReceive = customerTotal - transactionFee;
-
+        const variantId = document.getElementById("editVariantId").value;
         const formData = new FormData();
         formData.append("date_sold", date_sold);
         formData.append("customer_name", customer_name);
         formData.append("quantity", quantity);
-        formData.append("price", price);
+        formData.append("price_per_unit", price);
         formData.append("channel", channel);
         formData.append("shop_discount", shopDiscount);
         formData.append("platform_discount", platformDiscount);
@@ -431,6 +448,7 @@
         formData.append("customer_total", customerTotal.toFixed(2));
         formData.append("fee_total", transactionFee.toFixed(2));  // ✅
         formData.append("seller_receive", sellerReceive.toFixed(2));
+        formData.append("variant_id", variantId);
 
         const response = await fetch(`/sale/edit/${id}`, {
           method: "POST",
@@ -485,6 +503,34 @@
         }
       }
 
+      function updateNewUnitLabel() {
+        const select = document.getElementById('newVariantId');
+        const selectedOption = select.options[select.selectedIndex];
+        const saleMode = selectedOption.getAttribute('data-sale-mode');
+      
+        const label = document.getElementById('newUnitLabel');
+        label.innerText = saleMode || '';
+      }
+      
+      // เรียกครั้งแรกตอนโหลด
+      document.addEventListener('DOMContentLoaded', function () {
+        updateNewUnitLabel();
+      });
+      
+      function updateEditUnitLabel() {
+        const select = document.getElementById('editVariantId');
+        const selectedOption = select.options[select.selectedIndex];
+        const saleMode = selectedOption.getAttribute('data-sale-mode');
+      
+        const unitLabel = document.getElementById('editUnitLabel');
+        unitLabel.innerText = saleMode;  // เช่น 'แพ็ค', 'กล่องใหญ่'
+      }
+      
+      // เรียกตอนเปิด modal เพื่ออัปเดตหน่วยเริ่มต้น
+      document.addEventListener('DOMContentLoaded', function () {
+        updateEditUnitLabel();
+      });
+
       function openReportModal(saleId) {
         fetch(`/sale/report/${saleId}`)
           .then((response) => response.json())
@@ -509,15 +555,23 @@
       function closeReportModal() {
         document.getElementById("reportModal").classList.remove("show");
       }
-      
-      const commissionRate = {{ commission or 0 }};        // เปอร์เซ็นต์
-      const transactionRate = {{ transaction_fee or 0 }};  // เปอร์เซ็นต์
+    
       window.onload = updateFees;
-      ["editQuantity", "editPrice", "editShippingFee", "editShopDiscount", "editPlatformDiscount", "editCoinDiscount"]
+      ["editQuantity", "editPricePerUnit", "editShippingFee", "editShopDiscount", "editPlatformDiscount", "editCoinDiscount"]
       .forEach(id => {
         document.getElementById(id).addEventListener("input", calculateEditSummary);
       });
-
+      window.onload = function () {
+        const now = new Date();
+        const offset = now.getTimezoneOffset();
+        const localDate = new Date(now.getTime() - offset * 60000);
+        const isoString = localDate.toISOString().slice(0, 16); // YYYY-MM-DDTHH:mm
+        const input = document.getElementById("dateSoldInput");
+        if (input && !input.value) {
+          input.value = isoString;
+        }
+        updateFees(); // เรียกฟังก์ชันเดิม
+      };
       function sortTable(colIndex, thElement) {
         const table = document.querySelector("table");
         const tbody = table.tBodies[0];
@@ -566,7 +620,6 @@
         // ใส่แถวเรียงแล้วกลับเข้าไปใหม่
         rows.forEach(row => tbody.appendChild(row));
       }
-      
     </script>
   </body>
 </html>

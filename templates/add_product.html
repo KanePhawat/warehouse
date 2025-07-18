@@ -36,13 +36,8 @@
         const isFirstRow = container.children.length === 0;
 
         row.innerHTML = `
-          <select class="sale_mode"required>
-              <option value="" disabled selected>เลือกรูปแบบ</option>
-              <option value="single">แยกชิ้น</option>
-              <option value="pack">ยกแพ็ค</option>
-              <option value="box">ยกกล่อง</option>
-          </select>
-          <input type="number" placeholder="จำนวนต่อแพ็ค" class="pack_size" min="1" required>
+          <input type="text" class="sale_mode" placeholder="ขนาดการขาย" required>
+          <input type="number" placeholder="จำนวนต่อหน่วย" class="pack_size" min="1" required>
           <input type="number" placeholder="ราคาขาย" step="0.01" class="selling_price" min="0" required>
           <input type="text" placeholder="SKU ต่อท้าย (เช่น -P, -B)" class="sku_suffix" />
           ${
@@ -113,13 +108,13 @@
       ><br />
 
       <!-- ✅ เพิ่มปุ่มสำหรับเพิ่ม Variant -->
-      <p>เลือกรูปแบบการขาย (เช่น แยกชิ้น, ยกแพ็ค, ยกลัง):</p>
+      <p>เพิ่มขนาดการขาย (เช่น ชิ้น, แพ็ค, กล่อง):</p>
       <div id="variant-container"></div>
       <p style="font-size: 0.9em; color: #666">
-        เช่น: 12 ชิ้น/แพ็ค ราคา 100 บาท ขายแบบ "ยกแพ็ค"
+        เช่น: ขนาดการขาย: ยกแพ็ค 12 ชิ้น/แพ็ค ราคา 100 บาท
       </p>
       <button type="button" onclick="addVariantRow()">
-        ➕ เพิ่มรูปแบบการขาย
+        ➕ เพิ่มขนาดการขาย
       </button>
       <input type="hidden" id="variant_data" name="variant_data" />
       <br /><br />

@@ -57,7 +57,7 @@
           <th>SKU</th>
           <th>หมวดหมู่</th>
           <th>หน่วยนับ</th>
-          <th>รูปแบบการขาย</th>
+          <th>ขนาดการขาย</th>
           <th>จำนวนการขาย</th>
           <th>ราคาต้นทุน</th>
           <th>ราคาขาย</th>
@@ -110,7 +110,6 @@
               data-name="{{ product.name }}"
               data-sku="{{ product.sku }}"
               data-cost="{{ product.cost_price }}"
-              data-sell="{{ product.selling_price }}"
               data-category="{{ product.category or '' }}"
               data-unit="{{ product.unit or '' }}"
               data-variants='{{ product.serialized_variants | tojson | safe}}'
@@ -132,7 +131,7 @@
         <tr>
           <td>{{ product.name }}</td>
           <td>{{ product.sku }}</td>
-          <td colspan="8" style="text-align: center">ไม่มีรูปแบบการขาย</td>
+          <td colspan="10" style="text-align: center">ไม่มีรูปแบบการขาย</td>
         </tr>
         {% endif %} {% endfor %}
       </tbody>
@@ -184,10 +183,10 @@
           ><br />
 
           <div id="variant_section">
-            <p>รูปแบบการขาย</p>
+            <p>ขนาดการขาย</p>
             <div id="variant-container"></div>
             <button type="button" onclick="addVariantRow()">
-              ➕ เพิ่มรูปแบบ
+              ➕ เพิ่มขนาดการขาย
             </button>
           </div>
 
@@ -244,23 +243,15 @@
             const row = document.createElement("div");
             row.className = "variant-row";
             row.innerHTML = `
-              <select name="variant_sale_mode_${i}">
-                <option value="single" ${
-                  v.sale_mode === "single" ? "selected" : ""
-                }>แยกชิ้น</option>
-                <option value="pack" ${
-                  v.sale_mode === "pack" ? "selected" : ""
-                }>ยกแพ็ค</option>
-                <option value="box" ${
-                  v.sale_mode === "box" ? "selected" : ""
-                }>ยกกล่อง</option>
-              </select>
+              <input type="text" name="variant_sale_mode_${i}" value="${
+              v.sale_mode
+            }" placeholder=ขนาดการขาย" />
               <input type="number" name="variant_pack_size_${i}" value="${
               v.pack_size
-            }" min="1" />
+            }" placeholder="จำนวนต่อหน่วย" min="1" />
               <input type="number" name="variant_selling_price_${i}" value="${
               v.selling_price
-            }" step="0.01" />
+            }" placeholder="ราคาขาย" step="0.01" />
               <input type="text" name="variant_sku_suffix_${i}" value="${
               v.sku_suffix || ""
             }" placeholder="SKU ต่อท้าย" />
@@ -286,13 +277,9 @@
         const index = container.children.length;
 
         row.innerHTML = `
-          <select name="variant_sale_mode_${index}">
-            <option value="single">แยกชิ้น</option>
-            <option value="pack">ยกแพ็ค</option>
-            <option value="box">ยกกล่อง</option>
-          </select>
-          <input type="number" name="variant_pack_size_${index}" value="1" min="1" />
-          <input type="number" name="variant_selling_price_${index}" value="0.00" step="0.01" />
+          <input type="text" name="variant_sale_mode_${index}" placeholder="ขนาดการขาย" />
+          <input type="number" name="variant_pack_size_${index}" placeholder="จำนวนต่อหน่วย" min="1" />
+          <input type="number" name="variant_selling_price_${index}" placeholder="ราคาขาย" step="0.01" />
           <input type="text" name="variant_sku_suffix_${index}" placeholder="SKU ต่อท้าย" />
           <button type="button" class="delete-variant-btn" onclick="removeVariantRow(this)">🗑️</button>
         `;
@@ -369,9 +356,9 @@
 
           if (select) select.name = `variant_sale_mode_${index}`;
           if (inputs.length === 4) {
-            inputs[0].name = `variant_pack_size_${index}`;
-            inputs[1].name = `variant_selling_price_${index}`;
-            inputs[2].name = `variant_stock_${index}`;
+            inputs[0].name = `variant_sale_mode_${index}`;
+            inputs[1].name = `variant_pack_size_${index}`;
+            inputs[2].name = `variant_selling_price_${index}`;
             inputs[3].name = `variant_sku_suffix_${index}`;
           }
 

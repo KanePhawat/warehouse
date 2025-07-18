@@ -30,7 +30,8 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 db.init_app(app)
-
+with app.app_context():
+    db.create_all()
 
 def safe_float(val, default=0.0):
     try:
@@ -61,7 +62,6 @@ def serialize_product(product):
         "category": product.category,
         "unit": product.unit,
         "cost_price": float(product.cost_price or 0),
-        "selling_price": float(product.selling_price or 0),
         "image_filename": product.image_filename,
         "variants": [serialize_variant(v) for v in product.variants],
     }
@@ -89,7 +89,6 @@ def add_product():
             for row in reader:
                 sku = row['sku'].strip()
                 cost_price = safe_float(row.get('cost_price'))
-                selling_price = safe_float(row.get('selling_price'))
                 
                 existing = Product.query.filter_by(sku=sku).first()
 
@@ -100,9 +99,6 @@ def add_product():
                         updated = True
                     if existing.cost_price != cost_price:
                         existing.cost_price = cost_price
-                        updated = True
-                    if existing.selling_price != selling_price and selling_price > 0:
-                        existing.selling_price = selling_price
                         updated = True
                     if existing.category != row.get('category', ''):
                         existing.category = row.get('category', '')
@@ -126,7 +122,6 @@ def add_product():
                         unit=row.get('unit', ''),
                         stock=int(row.get('stock', 0)),
                         image_filename=row.get('image_filename') or None,
-                        selling_price=selling_price if selling_price > 0 else 0.0
                     )
                     db.session.add(product)
                     added_count += 1
@@ -174,7 +169,6 @@ def add_product():
                 unit=unit,
                 stock=0,
                 image_filename=filename,
-                selling_price=None
             )
             db.session.add(product)
             db.session.flush()  # ให้ได้ product.id ก่อน commit
@@ -206,8 +200,6 @@ def add_product():
                         )
                         db.session.add(variant)  # ✅ เพิ่มตรงนี้
                         
-                        if sale_mode == "single":
-                            product.selling_price = selling_price  #✅ ใช้เฉพาะเมื่อมี single จริง
                             
 
             except Exception as e:
@@ -237,7 +229,6 @@ def edit_product(product_id):
     if variant_count:
         # ถ้ามี variants → เคลียร์ของเก่าก่อน แล้วเพิ่มใหม่ทั้งหมด
         ProductVariant.query.filter_by(product_id=product.id).delete()
-        product.selling_price = 0
 
         for i in range(variant_count):
             suffix = request.form.get(f'variant_sku_suffix_{i}')
@@ -259,14 +250,6 @@ def edit_product(product_id):
                 stock=stock or 0
             )
             db.session.add(variant)
-            
-            if sale_mode == "single":
-                product.selling_price = selling_price
-    else:
-        product.selling_price = safe_float(request.form.get("selling_price"))
-        if product.selling_price <= 0:
-            flash("❌ ต้องระบุราคาขาย", "error")
-            return redirect(url_for('index'))
 
     if 'image' in request.files:
         file = request.files['image']
@@ -319,11 +302,16 @@ def stock_in(product_id):
         .all()
     
     if request.method == 'POST':
-        # ⏰ วันที่รับเข้า
+        # ⏰ วันที่รับเข้า พร้อมเวลา
         date_in_str = request.form.get('date_in')
-        date_in = datetime.strptime(date_in_str, '%Y-%m-%d')
+        try:
+            date_in = datetime.strptime(date_in_str, '%Y-%m-%dT%H:%M')
+        except ValueError:
+            flash("❌ รูปแบบวันที่ไม่ถูกต้อง", "danger")
+            return redirect(url_for('stock_in', product_id=product.id))
+        
         note = request.form.get('note')
-
+        
         # 📸 แนบรูปหลักฐาน
         file = request.files.get('evidence')
         filename = None
@@ -381,21 +369,10 @@ def stock_in(product_id):
                 continue
 
             if qty > 0 and pack_size > 0:
-                # ✅ ไม่สร้าง ProductVariant อีกแล้ว
-                custom_variant = ProductVariant(
-                product_id=product.id,
-                sale_mode=mode.strip(),
-                pack_size=pack_size,
-                is_for_sale=False,
-                stock=qty
-                )
-                db.session.add(custom_variant)
-                db.session.flush()
-                
                 # ➕ เพิ่ม StockInVariant
                 siv = StockInVariant(
                     stock_in_id=stock_in_record.id,
-                    variant_id=custom_variant.id,
+                    variant_id=None,
                     quantity=qty,
                     unit_multiplier=pack_size,
                     sale_mode=mode.strip(),
@@ -412,12 +389,13 @@ def stock_in(product_id):
         return redirect(url_for('stock_in', product_id=product.id))
 
     # GET method
+    current_datetime = datetime.now().strftime('%Y-%m-%dT%H:%M')
     history = sorted(product.stockins, key=lambda r: r.date_in)
     return render_template(
         'stock_in.html',
         product=product,
         history=history,
-        current_date=datetime.today().date(),
+        current_datetime=current_datetime,
         variants_json=variants_json
     )
 
@@ -425,28 +403,64 @@ def stock_in(product_id):
 @app.route('/stock_in/edit/<int:record_id>', methods=['POST'])
 def edit_stock_in(record_id):
     record = StockIn.query.get_or_404(record_id)
-    old_qty = record.quantity
-
-    new_date = request.form.get('date_in')
-    new_qty = int(request.form.get('quantity'))
-    note = request.form.get('note')  # 📝 เพิ่ม
-
-    if not new_date or new_qty <= 0:
-        return jsonify({'success': False, 'message': 'ข้อมูลไม่ถูกต้อง'}), 400
-
-    # ปรับสต๊อกสินค้า
     product = Product.query.get_or_404(record.product_id)
-    product.stock += new_qty - old_qty
 
-    record.date_in = datetime.strptime(new_date, '%Y-%m-%d')
-    record.quantity = new_qty
+    # 🔁 เก็บยอดรวมเก่าไว้ก่อนแก้
+    old_total_units = record.total_units or 0
+
+    # 🗓️ แก้วันที่และหมายเหตุ
+    new_date = request.form.get('date_in')
+    note = request.form.get('note')
+    if not new_date:
+        return jsonify({'success': False, 'message': '❌ ต้องระบุวันที่รับเข้า'}), 400
+    try:
+        record.date_in = datetime.strptime(new_date, '%Y-%m-%dT%H:%M')  # ✅ รองรับ datetime-local
+    except ValueError:
+        return jsonify({'success': False, 'message': '❌ รูปแบบวันที่ไม่ถูกต้อง'}), 400
+    
     record.note = note
+    # 🧹 ลบรายละเอียดเก่าทั้งหมดก่อนเพิ่มใหม่
+    record.details.clear()
 
-    # รูปใหม่
+    # ✅ รับค่าจากฟอร์ม
+    sale_modes = request.form.getlist("edit_sale_mode[]")
+    pack_sizes = request.form.getlist("edit_pack_size[]")
+    quantities = request.form.getlist("edit_quantity[]")
+
+    new_total_units = 0
+
+    for i in range(len(sale_modes)):
+        try:
+            sale_mode = sale_modes[i]
+            pack_size = int(pack_sizes[i])
+            quantity = int(quantities[i])
+        except (ValueError, IndexError):
+            continue  # ข้ามถ้าข้อมูลไม่ครบ
+
+        if quantity <= 0 or pack_size <= 0:
+            continue
+
+        unit_multiplier = pack_size
+        total_units = quantity * unit_multiplier
+        new_total_units += total_units
+
+        # ✅ เพิ่มใหม่ด้วย StockInVariant
+        detail = StockInVariant(
+            stock_in=record,
+            sale_mode=sale_mode,
+            pack_size=pack_size,
+            quantity=quantity,
+            unit_multiplier=unit_multiplier
+        )
+        db.session.add(detail)
+
+    # 🔄 อัปเดตสต๊อกของสินค้าหลัก
+    product.stock += new_total_units - old_total_units
+
+    # 🖼️ แนบรูปใหม่ถ้ามี
     if 'evidence' in request.files:
         file = request.files['evidence']
         if file and file.filename:
-            # ลบไฟล์เก่า
             if record.evidence_image:
                 old_path = os.path.join(app.config['UPLOAD_FOLDER'], record.evidence_image)
                 if os.path.exists(old_path):
@@ -481,6 +495,22 @@ def delete_stock_in(record_id):
     db.session.commit()
     return jsonify({"success": True})
 
+## B-4 ฟังชั่นก์ดึงข้อมูลการรับเข้าสินค้า แสดงในการแก้ไข Editmodal-------------------------------------------
+@app.route('/stock_in/get_details/<int:record_id>')
+def get_stockin_details(record_id):
+    record = StockIn.query.get_or_404(record_id)
+    details = []
+    for d in record.details:
+        details.append({
+            'id': d.id,
+            'variant_id': d.variant_id,  # ✅ เพิ่มบรรทัดนี้
+            'sale_mode': d.sale_mode,
+            'pack_size': d.pack_size,
+            'quantity': d.quantity
+        })
+    return jsonify({'details': details})
+
+
 # หน้าแสดงสินค้าทั้งหมด
 @app.route('/')
 def index():
@@ -493,23 +523,23 @@ def sell_product(product_id):
     product = Product.query.get_or_404(product_id)
     
     if request.method == 'POST':
-        date_sold = datetime.strptime(request.form['date_sold'], '%Y-%m-%d')  # ✅ แปลงเป็น datetime
+        date_sold = datetime.strptime(request.form['date_sold'], '%Y-%m-%dT%H:%M')  # ✅ แปลงเป็น datetime
         customer_name = request.form['customer_name']
         quantity = int(request.form['quantity'])
-        price = float(request.form['price'])
+        price = float(request.form['price_per_unit'])
         channel = request.form['channel']
         shop_discount = float(request.form.get('shop_discount') or 0)
         platform_discount = float(request.form.get('platform_discount') or 0)
         shipping_fee = float(request.form.get('shipping_fee') or 0)
         coin_discount = float(request.form.get('coin_discount') or 0)
         shipping_province = request.form.get('shipping_province')
-                
+        variant_id = int(request.form['variant_id'])
+        
         # ✅ ดึงค่าคอมฯ กับค่าธุรกรรม
         channel_setting = SalesChannelSetting.query.filter_by(channel=channel).first()
         commission = channel_setting.commission_percent if channel_setting else 0
         transaction_fee = channel_setting.transaction_fee if channel_setting else 0
-        
-        
+
         ## การคำนวณค่าต่างๆ
         # 1. ราคาขายสุทธิ
         total_price = quantity * price
@@ -522,12 +552,23 @@ def sell_product(product_id):
         seller_receive = total_price - commission_value - transaction_fee - shop_discount
         # 5. VAT
         vat = (commission_value + transaction_fee) * 7 / 107
-
-        if quantity > product.stock:
+        
+        # 👉 ดึง variant ที่ขาย
+        variant = ProductVariant.query.get_or_404(variant_id)
+        pack_size = variant.pack_size or 1  # fallback ถ้าไม่มีค่า
+        # 👉 คำนวณจำนวนที่ต้องหักจริง
+        quantity_to_deduct = quantity * pack_size
+        
+        if quantity_to_deduct > product.stock:
             return "❌ จำนวนเกินจากสินค้าคงเหลือ", 400
 
-        # หักสต๊อก
-        product.stock -= quantity
+        # 👉 หักจาก stock สินค้าหลัก
+        product.stock -= quantity_to_deduct
+
+        # 👉 หักจาก stock ของ variant ที่เก็บสต็อกจริง
+        stock_variant = ProductVariant.query.filter_by(product_id=product.id, is_for_sale=False).first()
+        if stock_variant:
+            stock_variant.stock_quantity -= quantity_to_deduct
 
         # บันทึกการขาย
         new_sale = Sale(
@@ -547,6 +588,7 @@ def sell_product(product_id):
             seller_receive=seller_receive,
             vat_amount=vat,
             shipping_province=shipping_province,
+            variant_id=variant_id, 
         )
         db.session.add(new_sale)
         db.session.commit()
@@ -562,14 +604,14 @@ def sell_product(product_id):
 
     if start_date:
         try:
-            start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+            start_dt = datetime.strptime(start_date,'%Y-%m-%d')
             filters.append(Sale.date_sold >= start_dt)
         except ValueError:
             pass
 
     if end_date:
         try:
-            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            end_dt = datetime.strptime(end_date,'%Y-%m-%d')
             filters.append(Sale.date_sold <= end_dt)
         except ValueError:
             pass
@@ -582,13 +624,21 @@ def sell_product(product_id):
     # กรองและแสดง
     sales_history = Sale.query.filter(and_(*filters)).order_by(Sale.date_sold.desc()).all()
     channels = SalesChannelSetting.query.all()  # ✅ เพิ่มเพื่อใช้ใน dropdown
+    current_datetime=datetime.now().strftime('%Y-%m-%dT%H:%M')
+    
+    # ✅ ค่า commission และ transaction_fee เริ่มต้น (เอาค่าจากช่องทางแรกในระบบหรือใส่ 0 ไว้ถ้าไม่มี)
+    default_channel = SalesChannelSetting.query.first()
+    commission = default_channel.commission_percent if default_channel else 0
+    transaction_fee = default_channel.transaction_fee if default_channel else 0
     
     return render_template(
         'sell_product.html',
         product=product,
         sales_history=sales_history,
-        current_date=date.today().isoformat(),
+        current_datetime=current_datetime,
         channels=channels,  # ✅ ส่งค่าไป dropdown
+        commission=commission,  # ✅ เพิ่มตรงนี้
+        transaction_fee=transaction_fee  # ✅ และตรงนี้
     )
     
 ## C-2 ฟังก์ชั่นแก้ไขรายการขายสินค้า-----------------------------------------------------------
@@ -596,6 +646,8 @@ def sell_product(product_id):
 def edit_sale(sale_id):
     sale = Sale.query.get_or_404(sale_id)
     product = Product.query.get_or_404(sale.product_id)
+    variant = ProductVariant.query.get_or_404(int(request.form.get('variant_id')))  # ดึง variant ใหม่
+    old_variant = ProductVariant.query.get(sale.variant_id)  # ดึง variant เก่าไว้ก่อนเปลี่ยน
     
     try:
         old_qty = sale.quantity
@@ -603,7 +655,7 @@ def edit_sale(sale_id):
         # รับค่าจาก form
         new_date = request.form.get('date_sold')
         new_qty = int(request.form.get('quantity'))
-        new_price = float(request.form.get('price'))
+        new_price = float(request.form.get('price_per_unit'))
         new_customer = request.form.get('customer_name')
         new_channel = request.form.get('channel')
         new_shop_discount = float(request.form.get('shop_discount') or 0)
@@ -625,15 +677,19 @@ def edit_sale(sale_id):
         seller_receive = subtotal - commission_value - transaction_fee - new_shop_discount
         vat = (commission_value + transaction_fee) * 7 / 107
 
+        # คืนสต๊อกจากรายการเดิม (ใช้ variant เดิม)
+        if old_variant:
+            product.stock += old_variant.pack_size * sale.quantity
+            
         # ตรวจสอบสต๊อก
         if new_qty > (product.stock + old_qty):
             return jsonify({'success': False, 'message': '❌ จำนวนเกินจากสินค้าคงเหลือ'}), 400
 
-        # ปรับสต๊อก
-        product.stock += old_qty - new_qty
+        # ตัด stock ใหม่
+        product.stock -= new_qty * variant.pack_size
 
         # อัปเดต sale record
-        sale.date_sold = datetime.strptime(new_date, '%Y-%m-%d')
+        sale.date_sold = datetime.strptime(new_date, '%Y-%m-%dT%H:%M')
         sale.quantity = new_qty
         sale.sale_price = new_price
         sale.customer_name = new_customer
@@ -643,6 +699,7 @@ def edit_sale(sale_id):
         sale.coin_discount = coin_discount
         sale.shipping_fee = shipping_fee
         sale.shipping_province = shipping_province
+        sale.variant_id = int(request.form.get('variant_id'))
 
         # อัปเดตการคำนวณใหม่
         sale.commission_percent = commission
@@ -665,11 +722,11 @@ def delete_sale(sale_id):
         return jsonify({'success': False, 'message': '❌ รหัสผ่านไม่ถูกต้อง'}), 403
 
     sale = Sale.query.get_or_404(sale_id)
-
-    # คืน stock กลับ
     product = Product.query.get(sale.product_id)
-    if product:
-        product.stock += sale.quantity
+    variant = ProductVariant.query.get(sale.variant_id)
+    # คืน stock กลับ
+    if product and variant:
+        product.stock += sale.quantity * variant.pack_size
 
     db.session.delete(sale)
     db.session.commit()

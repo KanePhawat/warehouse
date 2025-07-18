@@ -9,7 +9,6 @@ class Product(db.Model):
     name = db.Column(db.String(100), nullable=False) #ชื่อสินค้า
     sku = db.Column(db.String(50), unique=True, nullable=False) #รหัสSKU
     cost_price = db.Column(db.Float, nullable=False) #ราคาต้นทุนสินค้า
-    selling_price = db.Column(db.Float, nullable=True)  #ราคาขาย
     category = db.Column(db.String(50)) #หมวดหมู่สินค้า เช่น Vitamin / Drug / กระดาษ  ไม่ได้มีผลอะไรกับ data
     unit = db.Column(db.String(20)) #หน่วยนับ(แบบชิ้น)
     stock = db.Column(db.Integer, default=0) #จำนวนคงเหลือสต๊อก(แบบชิ้น)
@@ -23,8 +22,7 @@ class Product(db.Model):
                 "sku_suffix": v.sku_suffix,
                 "sale_mode": v.sale_mode,
                 "pack_size": v.pack_size,
-                "selling_price": v.selling_price,
-                "stock": v.stock
+                "selling_price": v.selling_price
             }
             for v in self.variants
         ]
@@ -74,7 +72,7 @@ class StockInVariant(db.Model): #ข้อมูลการรับเข้�
     __tablename__ = 'stock_in_variant'
     id = db.Column(db.Integer, primary_key=True)
     stock_in_id = db.Column(db.Integer, db.ForeignKey('stock_in.id'), nullable=False)
-    variant_id = db.Column(db.Integer, db.ForeignKey('product_variant.id'), nullable=False)
+    variant_id = db.Column(db.Integer, db.ForeignKey('product_variant.id'), nullable=True)
     variant = db.relationship('ProductVariant')
     quantity = db.Column(db.Integer, nullable=False)  # จำนวนที่รับเข้า (เช่น 3 ลัง)
     unit_multiplier = db.Column(db.Integer, nullable=False, default=1)  # เช่น 1 ลัง = 100 ชิ้น
@@ -102,7 +100,8 @@ class Sale(db.Model): #ข้อมูลส่วนการขาย
     customer_total = db.Column(db.Float, default=0.0)  #ราคาที่ลูกค้าจ่าย
     shipping_province = db.Column(db.String(100)) #จังหวัดที่จัดส่ง
     product = db.relationship('Product', backref=db.backref('sales', lazy=True))
-
+    variant_id = db.Column(db.Integer, db.ForeignKey('product_variant.id'), nullable=False)
+    variant = db.relationship("ProductVariant", backref="sales")
 
 class SalesChannelSetting(db.Model):  ## ข้อมูลเรื่องค่าคอมมิชชั่น/การชำระเงินที่โดนหักจาก platform ต่างๆ
     __tablename__ = 'sales_channel_setting'
