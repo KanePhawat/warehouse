@@ -9,7 +9,8 @@ import math
 from sqlalchemy import and_
 import json
 from sqlalchemy.orm import joinedload
-from model import db, Product, ProductVariant, StockIn, StockInVariant, Sale, SalesChannelSetting
+from model import db, Product, ProductVariant, StockIn, StockInVariant, Sale, SalesChannelSetting, StockMovement
+from collections import defaultdict
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', os.urandom(24))
@@ -86,44 +87,70 @@ def add_product():
             updated_count = 0
             added_count = 0
              
+            # ✅ Group ข้อมูลตาม SKU
+            grouped = defaultdict(list)
             for row in reader:
                 sku = row['sku'].strip()
-                cost_price = safe_float(row.get('cost_price'))
-                
+                grouped[sku].append(row)
+
+            for sku, rows in grouped.items():
+                base = rows[0]
+                cost_price = safe_float(base.get('cost_price'))
+
                 existing = Product.query.filter_by(sku=sku).first()
 
                 if existing:
                     updated = False
-                    if existing.name != row['name']:
-                        existing.name = row['name']
+                    if existing.name != base['name']:
+                        existing.name = base['name']
                         updated = True
                     if existing.cost_price != cost_price:
                         existing.cost_price = cost_price
                         updated = True
-                    if existing.category != row.get('category', ''):
-                        existing.category = row.get('category', '')
+                    if existing.category != base.get('category', ''):
+                        existing.category = base.get('category', '')
                         updated = True
-                    if existing.unit != row.get('unit', ''):
-                        existing.unit = row.get('unit', '')
+                    if existing.unit != base.get('unit', ''):
+                        existing.unit = base.get('unit', '')
                         updated = True
-                    if existing.image_filename != row.get('image_filename'):
-                        existing.image_filename = row.get('image_filename') or None
+                    if existing.image_filename != base.get('image_filename'):
+                        existing.image_filename = base.get('image_filename') or None
                         updated = True
 
                     if updated:
                         updated_count += 1
                         print(f"✏️ อัปเดตสินค้า SKU: {sku}")
+
                 else:
                     product = Product(
-                        name=row['name'],
+                        name=base['name'],
                         sku=sku,
                         cost_price=cost_price,
-                        category=row.get('category', ''),
-                        unit=row.get('unit', ''),
-                        stock=int(row.get('stock', 0)),
-                        image_filename=row.get('image_filename') or None,
+                        category=base.get('category', ''),
+                        unit=base.get('unit', ''),
+                        stock=int(base.get('stock', 0)),
+                        image_filename=base.get('image_filename') or None,
                     )
                     db.session.add(product)
+                    db.session.flush()  # เพื่อให้ได้ product.id
+
+                    for v in rows:
+                        pack_size = safe_int(v.get("variant_pack_size"))
+                        selling_price = safe_float(v.get("variant_selling_price"))
+                        sale_mode = v.get("variant_sale_mode", "แพ็ค")
+                        sku_suffix = v.get("variant_sku_suffix", "")
+
+                        if pack_size > 0 and selling_price > 0:
+                            variant = ProductVariant(
+                                product_id=product.id,
+                                pack_size=pack_size,
+                                selling_price=selling_price,
+                                sale_mode=sale_mode,
+                                sku_suffix=sku_suffix,
+                                stock=0
+                            )
+                            db.session.add(variant)
+
                     added_count += 1
                     print(f"➕ เพิ่มสินค้าใหม่ SKU: {sku}")
 
@@ -200,8 +227,6 @@ def add_product():
                         )
                         db.session.add(variant)  # ✅ เพิ่มตรงนี้
                         
-                            
-
             except Exception as e:
                 print("❌ ผิดพลาดในการแปลง variant_data:", e)
                 flash("❌ ไม่สามารถเพิ่มรูปแบบการขายเพิ่มเติมได้", "error")
@@ -352,6 +377,18 @@ def stock_in(product_id):
                     # อัปเดต stock
                     variant.stock += qty
                     product.stock += qty * variant.pack_size
+                    
+                movement = StockMovement(
+                    product_id=product.id,
+                    variant_id=variant.id,
+                    quantity=qty * variant.pack_size,
+                    movement_type='IN',
+                    ref_id=stock_in_record.id,
+                    ref_table='stock_in',
+                    note=f"รับเข้าแบบขาย {variant.sale_mode}",
+                    timestamp=date_in
+                )
+                db.session.add(movement)
             except Exception as e:
                 print(f"❌ Error in dropdown variant: {e}")
                 continue
@@ -383,6 +420,19 @@ def stock_in(product_id):
 
                 # ✅ เพิ่มเข้ายอดรวม stock
                 product.stock += qty * pack_size
+                
+                # ✅ เพิ่ม StockMovement
+                movement = StockMovement(
+                    product_id=product.id,
+                    variant_id=None,
+                    quantity=qty * pack_size,
+                    movement_type='IN',
+                    ref_id=stock_in_record.id,
+                    ref_table='stock_in',
+                    note=f"รับเข้าแบบ Custom ({mode.strip()})",
+                    timestamp=date_in
+                )
+                db.session.add(movement)
 
         db.session.commit()
         flash("✅ บันทึกรับเข้าสำเร็จ", "success")
@@ -591,6 +641,16 @@ def sell_product(product_id):
             variant_id=variant_id, 
         )
         db.session.add(new_sale)
+        # 👉 บันทึก StockMovement
+        stock_move = StockMovement(
+            product_id=product.id,
+            variant_id=variant.id,
+            movement_type='OUT',
+            quantity=quantity_to_deduct,
+            unit = f"{variant.sale_mode} ({product.unit})" if variant.sale_mode else (product.unit or 'หน่วย'),
+            reason=f'ขายให้ {customer_name} (ช่องทาง {channel})',
+        )
+        db.session.add(stock_move)
         db.session.commit()
 
         return redirect(url_for('sell_product', product_id=product.id))
@@ -828,6 +888,12 @@ def sale_report_detail(sale_id):
         commission_percent=commission_percent,
         transaction_fee_percent=transaction_fee_percent
     )
+    
+@app.route('/stock_movement/<int:product_id>')
+def stock_movement(product_id):
+    product = Product.query.get_or_404(product_id)
+    movements = StockMovement.query.filter_by(product_id=product_id).order_by(StockMovement.timestamp.desc()).all()
+    return render_template('stock_movement.html', product=product, movements=movements)  
 
 if __name__ == '__main__':
     with app.app_context():

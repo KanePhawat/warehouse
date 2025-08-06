@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <title>ประวัติการเคลื่อนไหวสต็อก: {{ product.name }}</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="container mt-4">
+      <h2>ประวัติการเคลื่อนไหวสต็อก: {{ product.name }}</h2>
+      <p>SKU: {{ product.sku }}</p>
+
+      <table class="table table-bordered mt-3">
+        <thead>
+          <tr>
+            <th>วันที่</th>
+            <th>รูปแบบการขาย</th>
+            <th>จำนวนเปลี่ยนแปลง</th>
+            <th>เหตุผล</th>
+            <th>หมายเหตุ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in movements %}
+          <tr
+            class="{% if m.change > 0 %}table-success{% elif m.change < 0 %}table-danger{% endif %}"
+          >
+            <td>{{ m.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>
+              {% if m.variant %} {{ m.variant.sale_mode }} ({{
+              m.variant.pack_size }} ชิ้น) {% else %} - {% endif %}
+            </td>
+            <td>{{ m.change }}</td>
+            <td>{{ m.reason or '-' }}</td>
+            <td>{{ m.note or '-' }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" class="text-center">ยังไม่มีการเคลื่อนไหว</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <a href="{{ url_for('product_list') }}" class="btn btn-secondary"
+        >ย้อนกลับ</a
+      >
+    </div>
+  </body>
+</html>

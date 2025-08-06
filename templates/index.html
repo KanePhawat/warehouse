@@ -124,14 +124,15 @@
             <a href="{{ url_for('sell_product', product_id=product.id) }}"
               >📤 ขาย</a
             >
+            <a href="{{ url_for('stock_movement', product_id=product.id) }}" class="btn btn-outline-info btn-sm">
+              ดูประวัติ Stock
+          </a>
           </td>
           {% endif %}
         </tr>
-        {% endfor %} {% if not product.variants %}
+        {% endfor %} {% if products|length == 1 %}
         <tr>
-          <td>{{ product.name }}</td>
-          <td>{{ product.sku }}</td>
-          <td colspan="10" style="text-align: center">ไม่มีรูปแบบการขาย</td>
+          <td colspan="11" style="text-align: center">ยังไม่มีประวัติสินค้า</td>
         </tr>
         {% endif %} {% endfor %}
       </tbody>

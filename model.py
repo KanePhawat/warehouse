@@ -13,7 +13,7 @@ class Product(db.Model):
     unit = db.Column(db.String(20)) #หน่วยนับ(แบบชิ้น)
     stock = db.Column(db.Integer, default=0) #จำนวนคงเหลือสต๊อก(แบบชิ้น)
     image_filename = db.Column(db.String(200))  #ชื่อไฟล์รูปภาพ
-    variants = db.relationship('ProductVariant', backref='product', cascade="all, delete-orphan")
+    variants = db.relationship('ProductVariant', backref='product', cascade="all, delete-orphan", lazy=True)
 
     @property
     def serialized_variants(self):
@@ -37,7 +37,9 @@ class ProductVariant(db.Model):  ## ข้อมูล 1 SKU สินค้า�
     selling_price = db.Column(db.Float, nullable=True)  # ราคาขาย
     stock = db.Column(db.Integer, default=0) # จำนวนคงเหลือ
     is_for_sale = db.Column(db.Boolean, default=True) #กำหนดรูปแบบ pack_size นี้ใช้สำหรับการขาย
-
+    #stock_movements = db.relationship('StockMovement', backref='variant', cascade="all, delete-orphan")
+    #stock_ins = db.relationship('StockIn', backref='variant', cascade="all, delete-orphan")
+    
     def to_dict(self):
         return {
             "id": self.id,
@@ -109,3 +111,20 @@ class SalesChannelSetting(db.Model):  ## ข้อมูลเรื่องค
     channel = db.Column(db.String(50), unique=True, nullable=False)  # เช่น Shopee, Lazada
     commission_percent = db.Column(db.Float, default=0.0) # ค่าคอมมิชชั่นที่platform หักจากเรา เช่น 5.0
     transaction_fee = db.Column(db.Float, default=0.0)   # ธุรกรรมการชำระเงิน เช่น 10.0 (บาท)
+    
+class StockMovement(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    variant_id = db.Column(db.Integer, db.ForeignKey('product_variant.id'), nullable=True)
+    movement_type = db.Column(db.String(20), nullable=False)  # เช่น 'IN', 'OUT', 'RETURN', 'TRANSFER', 'ADJUST'
+    ref_id = db.Column(db.Integer)  # อ้างอิงไปยัง StockIn, Sale, etc.
+    ref_table = db.Column(db.String(20))  # เช่น 'stock_in', 'sale'
+    quantity = db.Column(db.Integer, nullable=False)  # จำนวนที่ขยับ (+ เข้า / - ออก)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    note = db.Column(db.String(255))
+    reference = db.Column(db.String(100))  # เช่น เลขใบรับ, ใบสั่งซื้อ, หมายเหตุ
+    unit = db.Column(db.String(20)) #หน่วยนับ(แบบชิ้น)
+    reason = db.Column(db.String(255))
+    
+    product = db.relationship('Product', backref='movements')
+    variant = db.relationship('ProductVariant', backref='movements')

@@ -1,0 +1,7 @@
+﻿name,sku,category,unit,cost_price,variant_sale_mode,variant_pack_size,variant_selling_price,variant_sku_suffix
+น้ำดื่ม,WATER01,เครื่องดื่ม,ขวด,5,ชิ้น,1,10,S
+น้ำดื่ม,WATER01,เครื่องดื่ม,ขวด,5,แพ็ค,6,55,P
+น้ำดื่ม,WATER01,เครื่องดื่ม,ขวด,5,ลัง,24,200,L
+,,,,,,,,
+,,,,,,,,
+,,,,,,,,
